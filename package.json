@@ -35,6 +35,9 @@
     "js-yaml": "^4.1.0",
     "ts-is-present": "^1.2.2"
   },
+  "resolutions": {
+    "tmp": "^0.2.4"
+  },
   "scripts": {
     "start": "ts-node --esm src/index.ts",
     "start-jira": "ts-node --esm src/index.ts --type jira --url",
