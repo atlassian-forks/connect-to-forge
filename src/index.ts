@@ -387,6 +387,10 @@ async function convertToForgemanifest(
       }
     }
   }
+  // `forge lint` will complain if it finds an empty `modules`
+  if (manifest.modules && Object.keys(manifest.modules).length === 0) {
+    delete manifest.modules;
+  }
 
   console.log("");
 
