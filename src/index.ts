@@ -1,11 +1,11 @@
 import fs from 'fs';
-import axios from 'axios';
 import yaml from 'js-yaml';
 import { program } from 'commander';
 import inquirer from 'inquirer';
 import { error } from 'console';
 import { isPresent } from 'ts-is-present';
 import merge from 'deepmerge';
+
 
 // Typings for Atlassian Connect Descriptor
 interface ConnectDescriptor {
@@ -59,22 +59,40 @@ interface ForgeManifest {
 
 // Commander setup
 program
-  .requiredOption('-u, --url <url>', 'Atlassian Connect descriptor URL')
-  .option('-t, --type <type>', 'App type (jira or confluence)')
-  .option('-o, --output <path>', 'Output file path', 'manifest.yml')
-  .name('connect-to-forge')
-  .usage('--type <jira|confluence> --url https://website.com/path/to/descriptor.json')
+  .requiredOption("-u, --url <url>", "Atlassian Connect descriptor URL")
+  .option("-ni, --non-interactive", "Disable interactive prompts and run in non-interactive mode")
+  .option("--inScopeEUD", "Does your app egress end-user data to store it on a remote location?", false)
+  .option("--purpose-storage", "Purpose: Store data on a remote service (e.g., cloud database, file storage)", false)
+  .option("--purpose-compute", "Purpose: Send data to a remote service for processing or computation", false)
+  .option("--purpose-fetch", "Purpose: Fetch or retrieve data from a remote service", false)
+  .option("--purpose-other", "Purpose: Data egress for other reasons not covered by storage, compute, or fetch", false)
+  .option("-t, --type <type>", "App type (jira or confluence)")
+  .option("--migration-path <migrationPath>", "JWT auth is not supported on migration endpoints. Enter the new migrations path (leave empty to use the default path same as Connect and update it later)")
+  .option("-o, --output <path>", "Output file path", "manifest.yml")
+  .name("connect-to-forge")
+  .usage("--type <jira|confluence> --url https://website.com/path/to/descriptor.json")
   .parse(process.argv);
 
-const { url, type, output } = program.opts();
-
+const { 
+  url,
+  type,
+  output,
+  nonInteractive,
+  migrationPath,
+  purposeStorage,
+  purposeCompute,
+  purposeFetch,
+  purposeOther,
+  inScopeEUD,
+} = program.opts();
+console.log(program.opts())
 const UNSUPPORTED_MODULES = new Set<string>([]);
 
 // Helper function to download Atlassian Connect descriptor
 async function downloadConnectDescriptor(url: string): Promise<ConnectDescriptor> {
   try {
-    const response = await axios.get(url);
-    return response.data;
+    const response = await fetch(url).then(x => x.json());
+    return response;
   } catch (error) {
     console.error(`Error downloading Atlassian Connect descriptor at ${url}: ${error}`);
     process.exit(1);
@@ -124,22 +142,28 @@ async function askForMigrationPath(
   defaultMigrationPath: string,
   warnings: string[]
 ) {
-  const { migrationPath } = await inquirer.prompt([
-    {
-      type: "input",
-      name: "migrationPath",
-      message:
-        "JWT auth is not supported on migration endpoints. Enter the new migrations path (leave empty to use the default path same as Connect and update it later):",
-    },
-  ]);
+  let _migrationPath = migrationPath
+  if (!_migrationPath && !nonInteractive) {
+    await inquirer.prompt([
+      {
+        type: "input",
+        name: "migrationPath",
+        message:
+          "JWT auth is not supported on migration endpoints. Enter the new migrations path (leave empty to use the default path same as Connect and update it later):",
+      },
+    ]).then(x => x.migrationPath);
+  }
+  if (!_migrationPath) {
+    throw new Error('migrationPath is required but not provided')
+  }
 
-  if (!migrationPath.trim()) {
+  if (!_migrationPath.trim()) {
     warnings.push(
       "Warning: You should specify a new migration path because JWT auth is not supported on migration endpoints."
     );
   }
 
-  return migrationPath.trim() || defaultMigrationPath;
+  return _migrationPath.trim() || defaultMigrationPath;
 }
 
 // Helper function to convert Atlassian Connect descriptor to Forge manifest
@@ -344,32 +368,46 @@ async function convertToForgemanifest(
         }
       });
 
-      const answers = await inquirer.prompt<{ operations: string[] }>([
-        {
-          type: "checkbox",
-          name: "operations",
-          message:
-            "What is the purpose of the data being egressed? See https://developer.atlassian.com/platform/forge/manifest-reference/remotes/#properties for more information.",
-          choices: ["storage", "compute", "fetch", "other"],
-        },
-      ]);
-
-      if (answers.operations.includes("storage")) {
-        const { inScopeEUD } = await inquirer.prompt([
+      let answers = {
+        operations: [] as string[]
+      }
+      if (purposeStorage) answers.operations.push('storage')
+      if (purposeCompute) answers.operations.push('compute')
+      if (purposeFetch) answers.operations.push('fetch')
+      if (purposeOther) answers.operations.push('other')
+      if (!nonInteractive && !answers.operations.length) {
+        // @ts-ignore
+        answers = await inquirer.prompt<{ operations: string[] }>([
           {
-            type: "confirm",
-            name: "inScopeEUD",
+            type: "checkbox",
+            name: "operations",
             message:
-              "Does your app egress end-user data to store it on a remote location?",
-            default: true,
+              "What is the purpose of the data being egressed? See https://developer.atlassian.com/platform/forge/manifest-reference/remotes/#properties for more information.",
+            choices: ["storage", "compute", "fetch", "other"],
           },
         ]);
+      }
+      
+
+      if (answers.operations.includes("storage")) {
+        let _inScopeEUD = inScopeEUD
+        if (!nonInteractive && _inScopeEUD === undefined) {
+          _inScopeEUD = await inquirer.prompt([
+            {
+              type: "confirm",
+              name: "inScopeEUD",
+              message:
+                "Does your app egress end-user data to store it on a remote location?",
+              default: true,
+            },
+          ]);
+        }
         manifest.remotes[0] = {
           key: "connect",
           baseUrl: regionBaseUrls,
           operations: answers.operations,
           storage: {
-            inScopeEUD,
+            inScopeEUD: _inScopeEUD,
           },
         };
       } else {
@@ -430,29 +468,35 @@ async function main() {
     console.warn('');
     console.warn(`For more information about these limitations: https://developer.atlassian.com/platform/adopting-forge-from-connect/limitations-and-differences/#incompatibilities`);
     console.warn('');
-
-    const { proceed } = await inquirer.prompt([
-      {
-        name: 'proceed',
-        type: 'confirm',
-        message: 'Do you wish to proceed with manifest generation despite the warnings?',
-        default: false
-      }
-    ]);
+    
+    let proceed = nonInteractive
+    if (!proceed) {
+      proceed = await inquirer.prompt([
+        {
+          name: 'proceed',
+          type: 'confirm',
+          message: 'Do you wish to proceed with manifest generation despite the warnings?',
+          default: false
+        }
+      ]).then(x => x.proceed)
+    }
 
     if (!proceed) {
       process.exit(0);
     }
   }
 
-  const { appUser } = await inquirer.prompt([
-    {
-      name: 'appUser',
-      type: 'confirm',
-      message: 'Does this app use the Connect system user for anything (storing data against the app user, defining configuration of modules such as macros and dashboard items, expecting permissions to be granted to the user)?',
-      default: false
-    }
-  ]);
+  let appUser = false
+  if (!appUser && !nonInteractive) {
+    appUser = await inquirer.prompt([
+      {
+        name: 'appUser',
+        type: 'confirm',
+        message: 'Does this app use the Connect system user for anything (storing data against the app user, defining configuration of modules such as macros and dashboard items, expecting permissions to be granted to the user)?',
+        default: false
+      }
+    ]).then(x => x.appUser);
+  }
 
   if (appUser) {
     console.warn('Before deploying your Forge app to production, please request your Connect user to be persisted. See https://developer.atlassian.com/platform/adopting-forge-from-connect/persist-app-accounts/ for instructions');
