@@ -31,7 +31,6 @@ interface ForgeManifest {
     id: string;
     connect: {
       key: string;
-      authentication?: string;
       remote: string;
     };
     runtime: {
@@ -170,7 +169,6 @@ async function convertToForgemanifest(
     console.log(
       ` - Moved all lifecycle events into connectModules.${moduleName}.`
     );
-    manifest.app.connect.authentication = "jwt";
   }
 
   if (connect.enableLicensing !== undefined) {
