@@ -69,6 +69,21 @@ const { url, type, output } = program.opts();
 
 const UNSUPPORTED_MODULES = new Set<string>([]);
 
+// Map of Connect module types to their native Forge module key and unlicensedAccess values.
+// These modules support unlicensed/anonymous access in Forge and should be migrated to
+// native Forge modules (under `modules:`) rather than staying in `connectModules`.
+// Reference: https://developer.atlassian.com/platform/forge/access-to-forge-apps-for-unlicensed-users/
+const CONFLUENCE_MODULES_WITH_UNLICENSED_ACCESS: Record<string, { forgeKey: string; unlicensedAccess: string[] }> = {
+  staticContentMacro:   { forgeKey: 'macro',                       unlicensedAccess: ['unlicensed', 'anonymous'] },
+  dynamicContentMacro:  { forgeKey: 'macro',                       unlicensedAccess: ['unlicensed', 'anonymous'] },
+  spacePage:            { forgeKey: 'confluence:spacePage',         unlicensedAccess: ['unlicensed', 'anonymous'] },
+  customContent:        { forgeKey: 'confluence:customContent',     unlicensedAccess: ['unlicensed', 'anonymous'] },
+  contextMenu:          { forgeKey: 'confluence:contextMenu',       unlicensedAccess: ['unlicensed', 'anonymous'] },
+  contentAction:        { forgeKey: 'confluence:contentAction',     unlicensedAccess: ['unlicensed', 'anonymous'] },
+  contentBylineItem:    { forgeKey: 'confluence:contentBylineItem', unlicensedAccess: ['unlicensed', 'anonymous'] },
+  pageBanner:           { forgeKey: 'confluence:pageBanner',        unlicensedAccess: ['unlicensed', 'anonymous'] },
+};
+
 // Helper function to download Atlassian Connect descriptor
 async function downloadConnectDescriptor(url: string): Promise<ConnectDescriptor> {
   try {
@@ -224,21 +239,52 @@ async function convertToForgemanifest(
 
   // Add modules
   if (connect.modules) {
+    let nativeModuleCount = 0;
+    let connectModuleCount = 0;
+
+    if (!manifest.modules) {
+      manifest.modules = {};
+    }
+
     for (const [moduleType, moduleContent] of Object.entries(connect.modules)) {
       if (isPresent(moduleContent)) {
         // There are no singleton modules in a Forge manifest, so anything that is not an array needs to be turned into one.
-        manifest.connectModules[`${type}:${moduleType}`] = Array.isArray(
-          moduleContent
-        )
-          ? moduleContent
-          : [moduleContent];
+        const moduleArray = Array.isArray(moduleContent) ? moduleContent : [moduleContent];
+
+        // For Confluence apps, check if this module type supports native Forge unlicensedAccess.
+        // If so, migrate it to `modules:` with unlicensedAccess instead of `connectModules`.
+        if (type === 'confluence' && moduleType in CONFLUENCE_MODULES_WITH_UNLICENSED_ACCESS) {
+          const { forgeKey, unlicensedAccess } = CONFLUENCE_MODULES_WITH_UNLICENSED_ACCESS[moduleType];
+
+          // Add unlicensedAccess to each module entry to preserve Connect's default behaviour
+          // where macros/modules are visible to unlicensed and anonymous users.
+          const nativeModules = moduleArray.map((entry: any) => ({
+            ...entry,
+            unlicensedAccess,
+          }));
+
+          // Merge with any existing entries for the same Forge module key (e.g. both
+          // staticContentMacro and dynamicContentMacro map to 'macro').
+          if (manifest.modules[forgeKey]) {
+            manifest.modules[forgeKey] = [...manifest.modules[forgeKey], ...nativeModules];
+          } else {
+            manifest.modules[forgeKey] = nativeModules;
+          }
+
+          nativeModuleCount += moduleArray.length;
+          console.log(
+            ` - Migrated ${moduleArray.length} '${moduleType}' module(s) to native Forge modules.${forgeKey} with unlicensedAccess: [${unlicensedAccess.join(', ')}]`
+          );
+        } else {
+          manifest.connectModules[`${type}:${moduleType}`] = moduleArray;
+          connectModuleCount++;
+        }
       }
     }
-    console.log(
-      ` - Moved ${
-        Object.keys(connect.modules).length
-      } modules into connectModules in the manifest`
-    );
+
+    if (connectModuleCount > 0) {
+      console.log(` - Moved ${connectModuleCount} module type(s) into connectModules in the manifest`);
+    }
   }
 
   // Add translations
