@@ -1,0 +1,58 @@
+{
+  "key": "my-confluence-app",
+  "name": "My Confluence App",
+  "description": "A sample Confluence Connect app for testing migration",
+  "baseUrl": "https://my-app.example.com",
+  "authentication": {
+    "type": "jwt"
+  },
+  "scopes": ["READ", "WRITE"],
+  "modules": {
+    "staticContentMacro": [
+      {
+        "key": "my-static-macro",
+        "name": { "value": "My Static Macro" },
+        "url": "/macro/render?pageId={page.id}",
+        "description": { "value": "A static content macro" },
+        "outputType": "block",
+        "parameters": [
+          {
+            "identifier": "color",
+            "name": { "value": "Color" },
+            "type": "string"
+          }
+        ]
+      }
+    ],
+    "dynamicContentMacro": [
+      {
+        "key": "my-dynamic-macro",
+        "name": { "value": "My Dynamic Macro" },
+        "url": "/macro/dynamic?pageId={page.id}",
+        "description": { "value": "A dynamic content macro" },
+        "outputType": "block"
+      }
+    ],
+    "spacePage": [
+      {
+        "key": "my-space-page",
+        "name": { "value": "My Space Page" },
+        "url": "/space-page"
+      }
+    ],
+    "contentAction": [
+      {
+        "key": "my-content-action",
+        "name": { "value": "My Content Action" },
+        "url": "/content-action"
+      }
+    ],
+    "generalPages": [
+      {
+        "key": "my-general-page",
+        "name": { "value": "My General Page" },
+        "url": "/general-page"
+      }
+    ]
+  }
+}
