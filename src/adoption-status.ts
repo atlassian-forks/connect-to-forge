@@ -178,6 +178,16 @@ export function printAdoptionStatus(result: AdoptionStatusResult): void {
   }
 }
 
+export function parseManifest(raw: string, sourceName: string): ForgeManifest {
+  let manifest: ForgeManifest;
+  try {
+    manifest = yaml.load(raw) as ForgeManifest;
+  } catch (e) {
+    throw new Error(`could not parse '${sourceName}' as YAML: ${e}`);
+  }
+  return manifest;
+}
+
 export async function runAdoptionStatus(opts: { manifest: string; strict: boolean; json: boolean }): Promise<void> {
   let raw: string;
   try {
@@ -189,16 +199,16 @@ export async function runAdoptionStatus(opts: { manifest: string; strict: boolea
 
   let manifest: ForgeManifest;
   try {
-    manifest = yaml.load(raw) as ForgeManifest;
+    manifest = parseManifest(raw!, opts.manifest);
   } catch (e) {
-    console.error(`Error: could not parse '${opts.manifest}' as YAML: ${e}`);
+    console.error(`Error: ${e}`);
     process.exit(1);
   }
 
   console.log(`Checking adoption status of ${opts.manifest}...`);
   console.log('');
 
-  const result = checkManifest(manifest);
+  const result = checkManifest(manifest!);
 
   if (opts.json) {
     console.log(JSON.stringify(result, null, 2));
