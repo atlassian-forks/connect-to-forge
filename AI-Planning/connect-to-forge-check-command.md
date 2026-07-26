@@ -21,7 +21,6 @@ A fully adopted Forge manifest (one with no Connect remnants) must have:
 - `app.connect.key` present and retained (this is permanent — it ties the app to its Connect identity)
 - No other fields in `app.connect` beyond `key` (e.g. `remote`, `authentication` must be removed)
 - No scopes with the `:connect-jira` or `:connect-confluence` suffix
-- No `modules.migration:dataResidency` (used only during data-residency migration)
 
 ---
 
@@ -60,10 +59,9 @@ The `adoption-status` command inspects the parsed YAML manifest and applies the 
 | Rule ID | What is checked | Remediation hint |
 |---|---|---|
 | `E001` | `connectModules` key exists and is non-empty | Migrate all modules under `connectModules` to native Forge `modules:` equivalents (see per-module guidance below) |
-| `E006` | `app.connect` contains fields other than `key` (e.g. `remote`, `authentication`) | Remove all `app.connect` fields except `key`; they are Connect-on-Forge artefacts |
-| `E007` | `app.connect.key` is absent (no `app.connect` section, or `app.connect` exists without a `key`) | `app.connect.key` must be retained indefinitely — it ties the Forge app to its Connect identity and is required for APIs such as the clientKey migration endpoint |
+| `E002` | `app.connect` contains fields other than `key` (e.g. `remote`, `authentication`) | Remove all `app.connect` fields except `key`; they are Connect-on-Forge artefacts |
+| `E003` | `app.connect.key` is absent (no `app.connect` section, or `app.connect` exists without a `key`) | `app.connect.key` must be retained indefinitely — it ties the Forge app to its Connect identity and is required for APIs such as the clientKey migration endpoint |
 | `E004` | Any scope in `permissions.scopes` ends with `:connect-jira` or `:connect-confluence` | Replace with the equivalent native Forge scope (e.g. `read:jira-work` instead of `read:connect-jira`) |
-| `E005` | `modules["migration:dataResidency"]` is present | This module is only needed during data-residency migration; remove once complete |
 
 #### E001 — Per-module remediation: `<type>:lifecycle`
 
@@ -86,8 +84,8 @@ This approach requires `app.connect.key` to remain set in the manifest (so the a
 | Rule ID | What is checked | Why it's a warning |
 |---|---|---|
 | `W001` | `connectModules` key is present but empty `{}` | Harmless but should be cleaned up; `forge lint` may also flag this |
-| `W003` | `app.id` matches the placeholder `ari:cloud:ecosystem::app/invalid-run-forge-register` | `forge register` has not been run; the app is not properly registered |
-| `W004` | Any module entry references a URL pattern like `{issue.key}`, `{page.id}`, etc. | These are Connect-style context parameter tokens — verify they are handled by Forge |
+| `W002` | `app.id` matches the placeholder `ari:cloud:ecosystem::app/invalid-run-forge-register` | `forge register` has not been run; the app is not properly registered |
+| `W003` | Any module entry references a URL pattern like `{issue.key}`, `{page.id}`, etc. | These are Connect-style context parameter tokens — verify they are handled by Forge |
 
 ---
 
@@ -108,14 +106,14 @@ Checking adoption status of manifest.yml...
           - jira:webhooks (2 modules)
           → Migrate these to native Forge modules: or remove them if no longer needed.
 
-✗ [E006] app.connect contains fields beyond 'key': remote
+✗ [E002] app.connect contains fields beyond 'key': remote
           → Remove all app.connect fields except key; they are Connect-on-Forge artefacts.
 
 ✗ [E004] 2 Connect-style scope(s) found in permissions.scopes:
           - read:connect-jira  → use read:jira-work instead
           - write:connect-jira → use write:jira-work instead
 
-⚠ [W003] App ID is the placeholder value — run `forge register` to get a real app ID.
+⚠ [W002] App ID is the placeholder value — run `forge register` to get a real app ID.
 
 Adoption status: your app still has Connect modules and scopes in its manifest.
 It is running on Forge infrastructure but its behaviour is still being served
@@ -138,7 +136,6 @@ Checking adoption status of manifest.yml...
 ✓ app.connect.key is present
 ✓ No extra fields in app.connect beyond key
 ✓ No Connect-style scopes in permissions.scopes
-✓ No migration:dataResidency module present
 
 Adoption status: your app is fully adopted on Forge. There are no remaining
 Atlassian Connect modules or scopes in your manifest. Your app is running as
@@ -159,7 +156,6 @@ Checking adoption status of manifest.yml...
 ✓ app.connect.key is present
 ✓ No extra fields in app.connect beyond key
 ✓ No Connect-style scopes in permissions.scopes
-✓ No migration:dataResidency module present
 
 Adoption status: your app is partially adopted on Forge. Most of your modules
 have been migrated to native Forge equivalents, but some Connect modules remain.
@@ -182,7 +178,7 @@ Resolve the errors above to complete your adoption.
       "remediation": "Migrate these to native Forge modules: or remove them if no longer needed."
     },
     {
-      "id": "E006",
+      "id": "E002",
       "message": "app.connect contains fields beyond 'key'",
       "detail": { "extraFields": ["remote"] },
       "remediation": "Remove all app.connect fields except key."
@@ -190,7 +186,7 @@ Resolve the errors above to complete your adoption.
   ],
   "warnings": [
     {
-      "id": "W003",
+      "id": "W002",
       "message": "App ID is the placeholder value",
       "remediation": "Run `forge register` to get a real app ID."
     }
@@ -268,16 +264,16 @@ function checkManifest(manifest: ForgeManifest): AdoptionStatusResult {
     warnings.push({ id: 'W001', severity: 'warning', message: '...', remediation: '...' });
   }
 
-  // E007: app.connect.key absent — must be retained indefinitely
+  // E003: app.connect.key absent — must be retained indefinitely
   if (!manifest.app?.connect?.key) {
-    errors.push({ id: 'E007', severity: 'error', message: 'app.connect.key is absent', remediation: 'Add app.connect.key with the original Connect app key — it must be retained indefinitely.' });
+    errors.push({ id: 'E003', severity: 'error', message: 'app.connect.key is absent', remediation: 'Add app.connect.key with the original Connect app key — it must be retained indefinitely.' });
   }
 
-  // E006: app.connect contains fields other than 'key'
+  // E002: app.connect contains fields other than 'key'
   if (manifest.app?.connect) {
     const extraFields = Object.keys(manifest.app.connect).filter(k => k !== 'key');
     if (extraFields.length > 0) {
-      errors.push({ id: 'E006', severity: 'error', message: 'app.connect contains Connect-on-Forge fields', detail: { extraFields }, remediation: 'Remove all app.connect fields except key.' });
+      errors.push({ id: 'E002', severity: 'error', message: 'app.connect contains Connect-on-Forge fields', detail: { extraFields }, remediation: 'Remove all app.connect fields except key.' });
     }
   }
 
@@ -289,13 +285,8 @@ function checkManifest(manifest: ForgeManifest): AdoptionStatusResult {
     errors.push({ id: 'E004', severity: 'error', message: '...', detail: { scopes: connectScopes }, remediation: '...' });
   }
 
-  // E005: migration:dataResidency
-  if (manifest.modules?.['migration:dataResidency']) {
-    errors.push({ id: 'E005', severity: 'error', message: '...', remediation: '...' });
-  }
-
-  // W003: placeholder app ID
-  // W004: Connect-style URL tokens
+  // W002: placeholder app ID
+  // W003: Connect-style URL tokens
 
   const fullyAdopted = errors.length === 0;
   const summary = fullyAdopted
