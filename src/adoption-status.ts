@@ -4,6 +4,14 @@ import { ForgeManifest, AdoptionStatusResult, CheckIssue } from './types';
 
 const PLACEHOLDER_APP_ID = 'ari:cloud:ecosystem::app/invalid-run-forge-register';
 
+const SUMMARY_FULLY_ADOPTED = 'Your app is fully adopted on Forge. There are no remaining Atlassian Connect modules or scopes in your manifest.';
+const SUMMARY_GONE_TOO_FAR = 'Your app appears to have gone too far — it looks fully migrated to Forge, but app.connect.key has been removed. This key must be kept permanently. Add it back to complete your adoption.';
+const SUMMARY_UNSTARTED = 'Your app has been registered on Forge but no modules or scopes have been migrated yet. It is functionally still an Atlassian Connect app — all of its behaviour is served by the Connect backend.';
+const SUMMARY_PARTIAL = 'Your app is partially adopted on Forge. Some modules have been migrated to native Forge equivalents, but Atlassian Connect modules remain. Resolve the errors above to complete your adoption.';
+
+const REMEDIATION_E003_GONE_TOO_FAR = 'You have already fully migrated away from Atlassian Connect — but app.connect.key must be retained indefinitely as it ties the Forge app to its Connect identity. Add it back with your original Connect app key.';
+const REMEDIATION_E003 = 'Add app.connect.key with the original Atlassian Connect app key — it must be retained indefinitely as it ties the Forge app to its Connect identity.';
+
 export function checkManifest(manifest: ForgeManifest): AdoptionStatusResult {
   const errors: CheckIssue[] = [];
   const warnings: CheckIssue[] = [];
@@ -41,7 +49,7 @@ export function checkManifest(manifest: ForgeManifest): AdoptionStatusResult {
       id: 'E003',
       severity: 'error',
       message: 'app.connect.key is absent',
-      remediation: 'Add app.connect.key with the original Atlassian Connect app key — it must be retained indefinitely as it ties the Forge app to its Connect identity.',
+      remediation: REMEDIATION_E003,
     });
   }
 
@@ -108,11 +116,23 @@ export function checkManifest(manifest: ForgeManifest): AdoptionStatusResult {
   const hasNativeModules = manifest.modules != null && Object.keys(manifest.modules).length > 0;
   const isUnstarted = hasConnectModules && !hasNativeModules;
 
-  const summary = fullyAdopted
-    ? 'Your app is fully adopted on Forge. There are no remaining Atlassian Connect modules or scopes in your manifest.'
-    : isUnstarted
-      ? 'Your app has been registered on Forge but no modules or scopes have been migrated yet. It is functionally still an Atlassian Connect app — all of its behaviour is served by the Connect backend.'
-      : 'Your app is partially adopted on Forge. Some modules have been migrated to native Forge equivalents, but Atlassian Connect modules remain. Resolve the errors above to complete your adoption.';
+  // If E003 is the only error, the user has gone too far — they removed the key
+  // when they should have kept it, rather than having Connect work left to do.
+  const onlyE003 = errors.length === 1 && errors[0].id === 'E003';
+  if (onlyE003) {
+    errors[0].remediation = REMEDIATION_E003_GONE_TOO_FAR;
+  }
+
+  let summary: string;
+  if (fullyAdopted) {
+    summary = SUMMARY_FULLY_ADOPTED;
+  } else if (onlyE003) {
+    summary = SUMMARY_GONE_TOO_FAR;
+  } else if (isUnstarted) {
+    summary = SUMMARY_UNSTARTED;
+  } else {
+    summary = SUMMARY_PARTIAL;
+  }
 
   return { fullyAdopted, summary, errors, warnings };
 }
