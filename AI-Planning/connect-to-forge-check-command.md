@@ -1,30 +1,22 @@
-# Proposal: `connect-to-forge check` — Forge Level 3 Manifest Validator
+# Proposal: `connect-to-forge adoption-status` — Forge Adoption Status Reporter
 
 ## Background & Motivation
 
-A developer from the community posted in the Atlassian partner Slack ([#connect-on-forge](https://atlassian.slack.com/archives/C09EZ9NU77W/p1784961092756839)) asking how they could verify that their app had truly reached **Forge Level 3** — i.e. that no Atlassian Connect modules, scopes, or references remained in their Forge manifest. They had migrated their app ("Rich Filters") and `forge deploy`ed what they believed was a purely-Forge manifest, but there was no tooling to confirm this programmatically.
+A developer from the community posted in the Atlassian partner Slack ([#connect-on-forge](https://atlassian.slack.com/archives/C09EZ9NU77W/p1784961092756839)) asking how they could verify that their app had truly completed its migration to Forge — i.e. that no Atlassian Connect modules, scopes, or references remained in their Forge manifest. They had migrated their app ("Rich Filters") and `forge deploy`ed what they believed was a purely-Forge manifest, but there was no tooling to confirm this programmatically.
 
 This is a real, recurring pain point in the Connect-to-Forge migration journey:
 
-- Developers must visually inspect their `manifest.yml` to look for leftover `connectModules`, `remotes`, and Connect-style scopes — error-prone and tedious.
-- There is no Atlassian Marketplace flag or API that gives a clear "this is Forge Level 3" signal.
+- Developers must visually inspect their `manifest.yml` to look for leftover `connectModules` and Connect-style scopes — error-prone and tedious.
+- There is no Atlassian Marketplace flag or API that gives a clear signal that an app is purely native Forge.
 - `forge lint` validates schema correctness, but does not check for Connect remnants.
 
-**The proposal** is to add a `check` subcommand to `connect-to-forge` that reads a manifest file and reports whether it is free of all Atlassian Connect constructs, with clear, actionable output.
+**The proposal** is to add an `adoption-status` subcommand to `connect-to-forge` that reads a manifest file and reports the app's current adoption status — how far along the migration it is, what Connect remnants remain, and what to do next.
 
 ---
 
-## What Is "Forge Level 3"?
+## What Does "Fully Adopted" Mean?
 
-The Forge migration levels (informally) are:
-
-| Level | Description |
-|---|---|
-| **Level 1** | App registered in Forge but all modules still in `connectModules` |
-| **Level 2** | Some modules migrated to native Forge `modules:`, some still in `connectModules` |
-| **Level 3** | No `connectModules`, no Connect-style scopes, no `remotes` — purely native Forge |
-
-A **Level 3 manifest** must have:
+A fully adopted Forge manifest (one with no Connect remnants) must have:
 - No `connectModules` key (or an empty object)
 - `app.connect.key` present and retained (this is permanent — it ties the app to its Connect identity)
 - No other fields in `app.connect` beyond `key` (e.g. `remote`, `authentication` must be removed)
@@ -36,20 +28,20 @@ A **Level 3 manifest** must have:
 ## Proposed CLI Interface
 
 ```bash
-# Check a manifest in the current directory (default: manifest.yml)
-connect-to-forge check
+# Report adoption status using manifest in the current directory (default: manifest.yml)
+connect-to-forge adoption-status
 
 # Check a specific manifest file
-connect-to-forge check --manifest path/to/manifest.yml
+connect-to-forge adoption-status --manifest path/to/manifest.yml
 
-# Exit with a non-zero code if not Level 3 (useful in CI pipelines)
-connect-to-forge check --strict
+# Exit with a non-zero code if any Connect remnants are found (useful in CI pipelines)
+connect-to-forge adoption-status --strict
 
 # Output results as JSON (for tooling integration)
-connect-to-forge check --json
+connect-to-forge adoption-status --json
 ```
 
-### New CLI Options for `check`
+### New CLI Options for `adoption-status`
 
 | Flag | Default | Description |
 |---|---|---|
@@ -61,14 +53,13 @@ connect-to-forge check --json
 
 ## Detection Rules
 
-The `check` command inspects the parsed YAML manifest and applies the following rules. Each rule has a **severity** (Error or Warning) and a **remediation hint**.
+The `adoption-status` command inspects the parsed YAML manifest and applies the following rules. Each rule has a **severity** (Error or Warning) and a **remediation hint**.
 
 ### Errors (definitive Connect remnants)
 
 | Rule ID | What is checked | Remediation hint |
 |---|---|---|
 | `E001` | `connectModules` key exists and is non-empty | Migrate all modules under `connectModules` to native Forge `modules:` equivalents (see per-module guidance below) |
-| `E002` | `app.connect.remote` is present | Remove `app.connect.remote` — it is only needed while a Connect remote backend is still in use |
 | `E006` | `app.connect` contains fields other than `key` (e.g. `remote`, `authentication`) | Remove all `app.connect` fields except `key`; they are Connect-on-Forge artefacts |
 | `E007` | `app.connect.key` is absent (no `app.connect` section, or `app.connect` exists without a `key`) | `app.connect.key` must be retained indefinitely — it ties the Forge app to its Connect identity and is required for APIs such as the clientKey migration endpoint |
 | `E004` | Any scope in `permissions.scopes` ends with `:connect-jira` or `:connect-confluence` | Replace with the equivalent native Forge scope (e.g. `read:jira-work` instead of `read:connect-jira`) |
@@ -76,7 +67,7 @@ The `check` command inspects the parsed YAML manifest and applies the following 
 
 #### E001 — Per-module remediation: `<type>:lifecycle`
 
-If a `jira:lifecycle` or `confluence:lifecycle` module is present in `connectModules`, the app is still relying on the Connect lifecycle webhook to receive the `clientKey` at install time. This is **Option 1** from the [Forge clientKey migration guide](https://developer.atlassian.com/platform/adopting-forge-from-connect/migrate-connect-clientkey/) and is not compatible with Forge Level 3.
+If a `jira:lifecycle` or `confluence:lifecycle` module is present in `connectModules`, the app is still relying on the Connect lifecycle webhook to receive the `clientKey` at install time. This is **Option 1** from the [Forge clientKey migration guide](https://developer.atlassian.com/platform/adopting-forge-from-connect/migrate-connect-clientkey/) and means the migration is not yet complete.
 
 **Recommended: migrate to Option 2** — use a native Forge trigger instead:
 
@@ -104,10 +95,12 @@ This approach requires `app.connect.key` to remain set in the manifest (so the a
 
 ### Human-readable (default)
 
-```
-connect-to-forge check --manifest manifest.yml
+When Connect remnants are present:
 
-Checking manifest.yml for Atlassian Connect remnants...
+```
+connect-to-forge adoption-status --manifest manifest.yml
+
+Checking adoption status of manifest.yml...
 
 ✗ [E001] connectModules is present and non-empty (3 module type(s) found):
           - jira:webPanels (1 module)
@@ -115,11 +108,8 @@ Checking manifest.yml for Atlassian Connect remnants...
           - jira:webhooks (2 modules)
           → Migrate these to native Forge modules: or remove them if no longer needed.
 
-✗ [E002] app.connect section is present (key: com.example.myapp)
-          → Remove app.connect after completing migration to native Forge modules.
-
-✗ [E003] remotes array is non-empty (1 remote: connect → https://my-app.example.com)
-          → Remove remotes: once your backend logic is in Forge functions.
+✗ [E006] app.connect contains fields beyond 'key': remote
+          → Remove all app.connect fields except key; they are Connect-on-Forge artefacts.
 
 ✗ [E004] 2 Connect-style scope(s) found in permissions.scopes:
           - read:connect-jira  → use read:jira-work instead
@@ -127,33 +117,63 @@ Checking manifest.yml for Atlassian Connect remnants...
 
 ⚠ [W003] App ID is the placeholder value — run `forge register` to get a real app ID.
 
-Result: NOT Forge Level 3 ✗
-         4 error(s), 1 warning(s)
+Adoption status: your app still has Connect modules and scopes in its manifest.
+It is running on Forge infrastructure but its behaviour is still being served
+by the Connect backend. Continue migrating modules to native Forge equivalents
+to complete the adoption.
+
+3 error(s), 1 warning(s)
 
 For help migrating: https://developer.atlassian.com/platform/adopting-forge-from-connect/how-to-adopt/
 ```
 
-When the manifest is clean:
+When the manifest is fully adopted:
 
 ```
-connect-to-forge check --manifest manifest.yml
+connect-to-forge adoption-status --manifest manifest.yml
 
-Checking manifest.yml for Atlassian Connect remnants...
+Checking adoption status of manifest.yml...
 
 ✓ No Connect modules found in connectModules
-✓ No app.connect section present
-✓ No remotes defined
+✓ app.connect.key is present
+✓ No extra fields in app.connect beyond key
 ✓ No Connect-style scopes in permissions.scopes
 ✓ No migration:dataResidency module present
 
-Result: Forge Level 3 ✓ — this manifest contains no Atlassian Connect remnants.
+Adoption status: your app is fully adopted on Forge. There are no remaining
+Atlassian Connect modules or scopes in your manifest. Your app is running as
+a purely native Forge app.
+```
+
+When some modules are migrated but others remain (partial adoption):
+
+```
+connect-to-forge adoption-status --manifest manifest.yml
+
+Checking adoption status of manifest.yml...
+
+✗ [E001] connectModules is present and non-empty (1 module type found):
+          - jira:webhooks (2 modules)
+          → Migrate these to native Forge modules: or remove them if no longer needed.
+
+✓ app.connect.key is present
+✓ No extra fields in app.connect beyond key
+✓ No Connect-style scopes in permissions.scopes
+✓ No migration:dataResidency module present
+
+Adoption status: your app is partially adopted on Forge. Most of your modules
+have been migrated to native Forge equivalents, but some Connect modules remain.
+Resolve the errors above to complete your adoption.
+
+1 error(s), 0 warning(s)
 ```
 
 ### JSON output (`--json`)
 
 ```json
 {
-  "forgeLevel3": false,
+  "fullyAdopted": false,
+  "summary": "Your app still has Connect modules and scopes in its manifest. It is running on Forge infrastructure but its behaviour is still being served by the Connect backend.",
   "errors": [
     {
       "id": "E001",
@@ -162,10 +182,10 @@ Result: Forge Level 3 ✓ — this manifest contains no Atlassian Connect remnan
       "remediation": "Migrate these to native Forge modules: or remove them if no longer needed."
     },
     {
-      "id": "E002",
-      "message": "app.connect section is present",
-      "detail": { "connectKey": "com.example.myapp" },
-      "remediation": "Remove app.connect after completing migration to native Forge modules."
+      "id": "E006",
+      "message": "app.connect contains fields beyond 'key'",
+      "detail": { "extraFields": ["remote"] },
+      "remediation": "Remove all app.connect fields except key."
     }
   ],
   "warnings": [
@@ -202,17 +222,17 @@ const convertCmd = program.command('convert')
   .option('-o, --output <path>', 'Output file path', 'manifest.yml')
   .action(main);
 
-const checkCmd = program.command('check')
-  .description('Check a Forge manifest for Atlassian Connect remnants')
+const adoptionStatusCmd = program.command('adoption-status')
+  .description('Report the Forge adoption status of a manifest — checks for remaining Connect modules, scopes, and artefacts')
   .option('-m, --manifest <path>', 'Path to the Forge manifest', 'manifest.yml')
   .option('-s, --strict', 'Exit with code 1 if any Connect remnants found', false)
   .option('--json', 'Output results as JSON', false)
-  .action(runCheck);
+  .action(runAdoptionStatus);
 
 program.parse(process.argv);
 ```
 
-**Backwards compatibility note:** The current default behaviour (no subcommand, flat options) would need to be preserved or a deprecation notice added. One approach is to keep the existing flat behaviour as the default command and add `check` alongside it.
+**Backwards compatibility note:** The current default behaviour (no subcommand, flat options) would need to be preserved or a deprecation notice added. One approach is to keep the existing flat behaviour as the default command and add `adoption-status` alongside it.
 
 ### 2. Add `checkManifest()` function
 
@@ -227,13 +247,14 @@ interface CheckIssue {
   remediation: string;
 }
 
-interface CheckResult {
-  forgeLevel3: boolean;
+interface AdoptionStatusResult {
+  fullyAdopted: boolean;
+  summary: string;
   errors: CheckIssue[];
   warnings: CheckIssue[];
 }
 
-function checkManifest(manifest: ForgeManifest): CheckResult {
+function checkManifest(manifest: ForgeManifest): AdoptionStatusResult {
   const errors: CheckIssue[] = [];
   const warnings: CheckIssue[] = [];
 
@@ -250,11 +271,6 @@ function checkManifest(manifest: ForgeManifest): CheckResult {
   // E007: app.connect.key absent — must be retained indefinitely
   if (!manifest.app?.connect?.key) {
     errors.push({ id: 'E007', severity: 'error', message: 'app.connect.key is absent', remediation: 'Add app.connect.key with the original Connect app key — it must be retained indefinitely.' });
-  }
-
-  // E002: app.connect.remote present
-  if (manifest.app?.connect?.remote) {
-    errors.push({ id: 'E002', severity: 'error', message: 'app.connect.remote is present', detail: { remote: manifest.app.connect.remote }, remediation: 'Remove app.connect.remote once the Connect backend is no longer in use.' });
   }
 
   // E006: app.connect contains fields other than 'key'
@@ -281,18 +297,21 @@ function checkManifest(manifest: ForgeManifest): CheckResult {
   // W003: placeholder app ID
   // W004: Connect-style URL tokens
 
-  return {
-    forgeLevel3: errors.length === 0,
-    errors,
-    warnings,
-  };
+  const fullyAdopted = errors.length === 0;
+  const summary = fullyAdopted
+    ? 'Your app is fully adopted on Forge. There are no remaining Atlassian Connect modules or scopes in your manifest.'
+    : errors.some(e => e.id === 'E001')
+      ? 'Your app still has Connect modules in its manifest. It is running on Forge infrastructure but its behaviour is still being served by the Connect backend.'
+      : 'Your app has Connect artefacts remaining in its manifest. Resolve the errors above to complete your adoption.';
+
+  return { fullyAdopted, summary, errors, warnings };
 }
 ```
 
-### 3. Add `runCheck()` action
+### 3. Add `runAdoptionStatus()` action
 
 ```typescript
-async function runCheck(opts: { manifest: string; strict: boolean; json: boolean }) {
+async function runAdoptionStatus(opts: { manifest: string; strict: boolean; json: boolean }) {
   const raw = fs.readFileSync(opts.manifest, 'utf8');
   const manifest = yaml.load(raw) as ForgeManifest;
 
@@ -301,10 +320,10 @@ async function runCheck(opts: { manifest: string; strict: boolean; json: boolean
   if (opts.json) {
     console.log(JSON.stringify(result, null, 2));
   } else {
-    printCheckResult(result);
+    printAdoptionStatus(result);
   }
 
-  if (opts.strict && !result.forgeLevel3) {
+  if (opts.strict && !result.fullyAdopted) {
     process.exit(1);
   }
 }
@@ -314,10 +333,10 @@ async function runCheck(opts: { manifest: string; strict: boolean; json: boolean
 
 ```
 connect-to-forge/src/
-├── index.ts          # Entry point; wires up Commander subcommands
-├── convert.ts        # Extracted conversion logic (current index.ts content)
-├── check.ts          # New: checkManifest(), runCheck(), printCheckResult()
-└── types.ts          # Shared: ConnectDescriptor, ForgeManifest, CheckResult interfaces
+├── index.ts              # Entry point; wires up Commander subcommands
+├── convert.ts            # Extracted conversion logic (current index.ts content)
+├── adoption-status.ts    # New: checkManifest(), runAdoptionStatus(), printAdoptionStatus()
+└── types.ts              # Shared: ConnectDescriptor, ForgeManifest, AdoptionStatusResult interfaces
 ```
 
 This split is recommended to keep files manageable, but the implementation could also stay in a single file to match the current architecture.
@@ -332,15 +351,21 @@ The function is pure (no side effects, no I/O) so it is straightforward to unit 
 
 ```typescript
 describe('checkManifest', () => {
-  it('returns forgeLevel3: true for a clean native Forge manifest', () => {
-    const manifest = { app: { id: 'ari:...', runtime: { name: 'nodejs20.x' } }, permissions: { scopes: [] } };
-    expect(checkManifest(manifest as any).forgeLevel3).toBe(true);
+  it('reports fully adopted for a clean native Forge manifest', () => {
+    const manifest = { app: { id: 'ari:...', connect: { key: 'com.example.app' }, runtime: { name: 'nodejs20.x' } }, permissions: { scopes: [] } };
+    expect(checkManifest(manifest as any).fullyAdopted).toBe(true);
   });
 
   it('detects non-empty connectModules as E001', () => {
     const manifest = { connectModules: { 'jira:webhooks': [{ key: 'w1' }] }, ... };
     const result = checkManifest(manifest as any);
     expect(result.errors.some(e => e.id === 'E001')).toBe(true);
+  });
+
+  it('detects missing app.connect.key as E007', () => {
+    const manifest = { app: { id: 'ari:...', runtime: { name: 'nodejs20.x' } }, permissions: { scopes: [] } };
+    const result = checkManifest(manifest as any);
+    expect(result.errors.some(e => e.id === 'E007')).toBe(true);
   });
 
   // ... etc.
@@ -350,8 +375,8 @@ describe('checkManifest', () => {
 ### Integration test fixtures
 
 Use the existing test descriptors in the repo as end-to-end fixtures:
-- Run `convert` on `my-reminders.json` → produces a connect-on-forge `manifest.yml` → `check` should report **not Level 3** with specific errors.
-- A hand-crafted `manifest.yml` with no Connect remnants → `check` should report **Level 3**.
+- Run `convert` on `my-reminders.json` → produces a connect-on-forge `manifest.yml` → `adoption-status` should report not fully adopted with specific errors.
+- A hand-crafted `manifest.yml` with no Connect remnants → `adoption-status` should report fully adopted.
 
 ---
 
@@ -361,8 +386,8 @@ The `--strict` and `--json` flags are designed for use in CI pipelines. A team c
 
 ```yaml
 # Example: GitHub Actions / Bitbucket Pipelines step
-- name: Verify Forge Level 3
-  run: npx connect-to-forge@latest check --strict --manifest manifest.yml
+- name: Verify Forge adoption is complete
+  run: npx connect-to-forge@latest adoption-status --strict --manifest manifest.yml
 ```
 
 This would cause the pipeline to fail if the manifest still contains any Connect remnants, giving teams a concrete automated gate before they declare their migration complete.
@@ -376,7 +401,7 @@ This would cause the pipeline to fail if the manifest still contains any Connect
 | Refactor `program` to use Commander subcommands | Small (1–2 hours) |
 | Extract types to `types.ts` | Small (30 min) |
 | Implement `checkManifest()` with all rules | Medium (2–3 hours) |
-| Implement `runCheck()` with human + JSON output | Small (1–2 hours) |
+| Implement `runAdoptionStatus()` with human + JSON output | Small (1–2 hours) |
 | Write unit tests | Medium (2–3 hours) |
 | Update README and AGENTS.md | Small (1 hour) |
 | **Total** | **~8–12 hours** |
@@ -389,9 +414,9 @@ This would cause the pipeline to fail if the manifest still contains any Connect
 
 2. **Scope mapping hints** — For E004 (Connect-style scopes), should we provide a lookup table mapping each `:connect-jira` scope to the recommended native Forge scope? This would make the remediation output more actionable but requires maintaining a mapping table.
 
-3. **Future: `--level` flag** — We could extend the check to report a numeric Forge Level (1, 2, or 3) rather than just a pass/fail. This would require defining what Level 1 and Level 2 look like quantitatively (e.g. percentage of modules still in `connectModules`).
+3. **E002/E006 consolidation** — E006 already covers the case where `app.connect.remote` is present (it is a field other than `key`). The original E002 was redundant and has been removed in favour of E006. This is worth confirming during implementation.
 
-4. **Marketplace integration** — The original Slack question also asked whether Atlassian Marketplace has an API or flag to verify Level 3 status. If such an API exists or is added in future, the `check` command could optionally query it to cross-reference the local manifest against the deployed version.
+4. **Marketplace integration** — The original Slack question also asked whether Atlassian Marketplace has an API or flag to verify fully-adopted status. If such an API exists or is added in future, the `adoption-status` command could optionally query it to cross-reference the local manifest against the deployed version.
 
 ---
 
