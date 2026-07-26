@@ -95,7 +95,6 @@ This approach requires `app.connect.key` to remain set in the manifest (so the a
 | Rule ID | What is checked | Why it's a warning |
 |---|---|---|
 | `W001` | `connectModules` key is present but empty `{}` | Harmless but should be cleaned up; `forge lint` may also flag this |
-| `W002` | Any module entry has `migratedFromConnect: true` | Left by `connect-to-forge` as a migration marker; safe to remove once verified |
 | `W003` | `app.id` matches the placeholder `ari:cloud:ecosystem::app/invalid-run-forge-register` | `forge register` has not been run; the app is not properly registered |
 | `W004` | Any module entry references a URL pattern like `{issue.key}`, `{page.id}`, etc. | These are Connect-style context parameter tokens — verify they are handled by Forge |
 
@@ -279,7 +278,6 @@ function checkManifest(manifest: ForgeManifest): CheckResult {
     errors.push({ id: 'E005', severity: 'error', message: '...', remediation: '...' });
   }
 
-  // W002: migratedFromConnect markers
   // W003: placeholder app ID
   // W004: Connect-style URL tokens
 
