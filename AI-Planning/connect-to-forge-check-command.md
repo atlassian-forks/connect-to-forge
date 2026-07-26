@@ -59,7 +59,7 @@ The `adoption-status` command inspects the parsed YAML manifest and applies the 
 | Rule ID | What is checked | Remediation hint |
 |---|---|---|
 | `E001` | `connectModules` key exists and is non-empty | Migrate all modules under `connectModules` to native Forge `modules:` equivalents (see per-module guidance below) |
-| `E002` | `app.connect` contains fields other than `key` (e.g. `remote`, `authentication`) | Remove all `app.connect` fields except `key`; they are Connect-on-Forge artefacts |
+| `E002` | `app.connect` contains fields other than `key` (e.g. `remote`, `authentication`) | Remove all `app.connect` fields except `key`; these are leftover Atlassian Connect fields that are no longer needed |
 | `E003` | `app.connect.key` is absent (no `app.connect` section, or `app.connect` exists without a `key`) | `app.connect.key` must be retained indefinitely — it ties the Forge app to its Connect identity and is required for APIs such as the clientKey migration endpoint |
 | `E004` | Any scope in `permissions.scopes` ends with `:connect-jira` or `:connect-confluence` | Replace with the equivalent native Forge scope (e.g. `read:jira-work` instead of `read:connect-jira`) |
 
@@ -107,7 +107,7 @@ Checking adoption status of manifest.yml...
           → Migrate these to native Forge modules: or remove them if no longer needed.
 
 ✗ [E002] app.connect contains fields beyond 'key': remote
-          → Remove all app.connect fields except key; they are Connect-on-Forge artefacts.
+          → Remove all app.connect fields except key; these are leftover Atlassian Connect fields that are no longer needed.
 
 ✗ [E004] 2 Connect-style scope(s) found in permissions.scopes:
           - read:connect-jira  → use read:jira-work instead
@@ -273,7 +273,7 @@ function checkManifest(manifest: ForgeManifest): AdoptionStatusResult {
   if (manifest.app?.connect) {
     const extraFields = Object.keys(manifest.app.connect).filter(k => k !== 'key');
     if (extraFields.length > 0) {
-      errors.push({ id: 'E002', severity: 'error', message: 'app.connect contains Connect-on-Forge fields', detail: { extraFields }, remediation: 'Remove all app.connect fields except key.' });
+      errors.push({ id: 'E002', severity: 'error', message: 'app.connect contains leftover Atlassian Connect fields', detail: { extraFields }, remediation: 'Remove all app.connect fields except key.' });
     }
   }
 
@@ -366,7 +366,7 @@ describe('checkManifest', () => {
 ### Integration test fixtures
 
 Use the existing test descriptors in the repo as end-to-end fixtures:
-- Run `convert` on `my-reminders.json` → produces a connect-on-forge `manifest.yml` → `adoption-status` should report not fully adopted with specific errors.
+- Run `convert` on `my-reminders.json` → produces a manifest with Atlassian Connect modules still present → `adoption-status` should report not fully adopted with specific errors.
 - A hand-crafted `manifest.yml` with no Connect remnants → `adoption-status` should report fully adopted.
 
 ---
