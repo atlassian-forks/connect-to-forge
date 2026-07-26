@@ -28,7 +28,7 @@ A **Level 3 manifest** must have:
 - No `connectModules` key (or an empty object)
 - `app.connect.key` present and retained (this is permanent — it ties the app to its Connect identity)
 - No other fields in `app.connect` beyond `key` (e.g. `remote`, `authentication` must be removed)
-- No entries in `remotes` (or no `remotes` key)
+- No remote with `key: 'connect'` in the `remotes` array (other remotes are fine)
 - No scopes with the `:connect-jira` or `:connect-confluence` suffix
 - No `modules.migration:dataResidency` (used only during data-residency migration)
 
@@ -72,7 +72,7 @@ The `check` command inspects the parsed YAML manifest and applies the following 
 | `E002` | `app.connect.remote` is present | Remove `app.connect.remote` — it is only needed while a Connect remote backend is still in use |
 | `E006` | `app.connect` contains fields other than `key` (e.g. `remote`, `authentication`) | Remove all `app.connect` fields except `key`; they are Connect-on-Forge artefacts |
 | `E007` | `app.connect.key` is absent (no `app.connect` section, or `app.connect` exists without a `key`) | `app.connect.key` must be retained indefinitely — it ties the Forge app to its Connect identity and is required for APIs such as the clientKey migration endpoint |
-| `E003` | `remotes` array is non-empty | Remove the `remotes` section; native Forge functions handle backend calls directly |
+| `E003` | A remote with `key: 'connect'` is present in the `remotes` array | The `connect` remote is the Connect backend — remove it once all `connectModules` have been migrated to native Forge modules |
 | `E004` | Any scope in `permissions.scopes` ends with `:connect-jira` or `:connect-confluence` | Replace with the equivalent native Forge scope (e.g. `read:jira-work` instead of `read:connect-jira`) |
 | `E005` | `modules["migration:dataResidency"]` is present | This module is only needed during data-residency migration; remove once complete |
 
@@ -268,9 +268,10 @@ function checkManifest(manifest: ForgeManifest): CheckResult {
     }
   }
 
-  // E003: remotes non-empty
-  if (manifest.remotes && manifest.remotes.length > 0) {
-    errors.push({ id: 'E003', severity: 'error', message: '...', detail: { remotes: manifest.remotes.map(r => r.key) }, remediation: '...' });
+  // E003: 'connect' remote present
+  const connectRemote = manifest.remotes?.find(r => r.key === 'connect');
+  if (connectRemote) {
+    errors.push({ id: 'E003', severity: 'error', message: "Remote with key 'connect' is present", detail: { baseUrl: connectRemote.baseUrl }, remediation: "Remove the 'connect' remote once all connectModules have been migrated to native Forge modules." });
   }
 
   // E004: Connect-style scopes
