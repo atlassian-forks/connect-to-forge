@@ -15,11 +15,15 @@ This proposal describes the testing strategy, required refactoring, and test cov
 | `genDefaultManifest()` | `convert.ts` | ✅ Yes | Pure function |
 | `checkManifest()` | `adoption-status.ts` | ✅ Yes | Pure function |
 | `parseManifest()` | `adoption-status.ts` | ✅ Yes | Extracted from `runAdoptionStatus()` — YAML parsing separated from file I/O |
+| `buildForgeManifest()` | `convert.ts` | ✅ Yes | Extracted pure function — accepts options instead of prompting |
+| `normaliseConnectScope()` | `convert.ts` | ✅ Yes | Pure function |
+| `normalisePermission()` | `convert.ts` | ✅ Yes | Pure function |
+| `assignWebhookKeys()` | `convert.ts` | ✅ Yes | Pure function |
+| `loadExistingManifest()` | `convert.ts` | ✅ Yes | Returns discriminated union, no side effects |
+| `printAdoptionStatus()` | `adoption-status.ts` | ✅ Yes | Accepts injectable writer |
 | `downloadConnectDescriptor()` | `convert.ts` | ❌ No | Hardcoded axios + process.exit |
-| `loadExistingManifest()` | `convert.ts` | ❌ No | Hardcoded fs + console.log |
-| `convertToForgemanifest()` | `convert.ts` | ❌ No | Inquirer prompts tangled with logic |
+| `convertToForgemanifest()` | `convert.ts` | ❌ No | Thin I/O orchestrator — logic now in buildForgeManifest() |
 | `runConvert()` | `convert.ts` | ❌ No | Full I/O orchestrator |
-| `printAdoptionStatus()` | `adoption-status.ts` | ❌ No | Hardcoded console.log |
 | `runAdoptionStatus()` | `adoption-status.ts` | ✅ Partially | File I/O still present but YAML parsing extracted |
 
 The core problem is that **business logic is tangled with I/O**. The fix is to extract pure functions for all business logic and inject I/O dependencies, making them testable without mocking the file system, network, or terminal.
@@ -32,11 +36,11 @@ Before writing tests, the following targeted refactoring is needed. These change
 
 | # | Refactoring | Status |
 |---|---|---|
-| 1 | Extract `buildForgeManifest()` from `convertToForgemanifest()` | ❌ Not done |
-| 2 | Extract `normaliseConnectScope()` | ❌ Not done |
-| 3 | Extract `normalisePermission()` and `assignWebhookKeys()` | ❌ Not done |
-| 4 | Make `loadExistingManifest()` return a result type | ❌ Not done |
-| 5 | Make `printAdoptionStatus()` accept a writer | ❌ Not done |
+| 1 | Extract `buildForgeManifest()` from `convertToForgemanifest()` | ✅ Done |
+| 2 | Extract `normaliseConnectScope()` | ✅ Done |
+| 3 | Extract `normalisePermission()` and `assignWebhookKeys()` | ✅ Done |
+| 4 | Make `loadExistingManifest()` return a result type | ✅ Done |
+| 5 | Make `printAdoptionStatus()` accept a writer | ✅ Done |
 | — | Extract `parseManifest()` from `runAdoptionStatus()` | ✅ Done |
 
 ### 1. Extract pure conversion logic from `convertToForgemanifest()`
@@ -128,9 +132,9 @@ export function printAdoptionStatus(
 ```
 connect-to-forge/src/
 ├── __tests__/
-│   ├── adoption-status.test.ts   ✅ Done — unit tests for checkManifest(), parseManifest()
-│   ├── convert.test.ts            ❌ Not done — unit tests for buildForgeManifest(), normaliseConnectScope(), etc.
-│   ├── manifest-fixtures.ts       ❌ Not done — shared ForgeManifest/ConnectDescriptor fixture objects
+│   ├── adoption-status.test.ts   ✅ Done — unit tests for checkManifest(), parseManifest(), printAdoptionStatus()
+│   ├── convert.test.ts            ✅ Done — unit tests for buildForgeManifest(), normaliseConnectScope(), etc.
+│   ├── manifest-fixtures.ts       ✅ Done — shared ForgeManifest/ConnectDescriptor fixture objects
 │   └── integration.test.ts        ❌ Not done — end-to-end CLI tests using child_process
 ```
 
@@ -343,16 +347,16 @@ npm install --save-dev jest ts-jest @types/jest
 | Add Jest + configure | Small (30 min) | ✅ Done |
 | Extract `parseManifest()` from `runAdoptionStatus()` | Small (30 min) | ✅ Done |
 | Write adoption-status.test.ts (25 tests) | Medium (2–3 hours) | ✅ Done |
-| Create manifest-fixtures.ts | Small (1 hour) | ❌ Not done |
-| Extract `normaliseConnectScope()` | Small (30 min) | ❌ Not done |
-| Extract `normalisePermission()` | Small (30 min) | ❌ Not done |
-| Extract `assignWebhookKeys()` | Small (30 min) | ❌ Not done |
-| Extract `buildForgeManifest()` (biggest refactor) | Medium (3–4 hours) | ❌ Not done |
-| Refactor `loadExistingManifest()` | Small (1 hour) | ❌ Not done |
-| Make `printAdoptionStatus()` accept writer | Small (30 min) | ❌ Not done |
-| Write convert.test.ts (~35 tests) | Medium (3–4 hours) | ❌ Not done |
+| Create manifest-fixtures.ts | Small (1 hour) | ✅ Done |
+| Extract `normaliseConnectScope()` | Small (30 min) | ✅ Done |
+| Extract `normalisePermission()` | Small (30 min) | ✅ Done |
+| Extract `assignWebhookKeys()` | Small (30 min) | ✅ Done |
+| Extract `buildForgeManifest()` (biggest refactor) | Medium (3–4 hours) | ✅ Done |
+| Refactor `loadExistingManifest()` | Small (1 hour) | ✅ Done |
+| Make `printAdoptionStatus()` accept writer | Small (30 min) | ✅ Done |
+| Write convert.test.ts (~35 tests) | Medium (3–4 hours) | ✅ Done |
 | Write integration.test.ts (~9 tests) | Small (1–2 hours) | ❌ Not done |
-| **Total** | **~14–18 hours** | **~3 hours complete** |
+| **Total** | **~14–18 hours** | **~12–14 hours complete** |
 
 ---
 

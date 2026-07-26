@@ -1,4 +1,5 @@
-import { checkManifest, parseManifest } from '../adoption-status';
+import { checkManifest, parseManifest, printAdoptionStatus } from '../adoption-status';
+import { AdoptionStatusResult, CheckIssue } from '../types';
 import { ForgeManifest } from '../types';
 
 // A minimal valid fully-adopted manifest — passes all checks
@@ -268,5 +269,112 @@ permissions:
 
   it('throws on invalid YAML', () => {
     expect(() => parseManifest('{ invalid: yaml: here', 'bad.yml')).toThrow(/bad\.yml/);
+  });
+});
+
+// ─── printAdoptionStatus() ────────────────────────────────────────────────
+
+function makeResult(overrides: Partial<AdoptionStatusResult> = {}): AdoptionStatusResult {
+  return {
+    fullyAdopted: true,
+    summary: 'Your app is fully adopted on Forge.',
+    errors: [],
+    warnings: [],
+    ...overrides,
+  };
+}
+
+function makeError(id: string, message: string, extra: Partial<CheckIssue> = {}): CheckIssue {
+  return { id, severity: 'error', message, remediation: 'Fix it.', ...extra };
+}
+
+function makeWarning(id: string, message: string): CheckIssue {
+  return { id, severity: 'warning', message, remediation: 'Address it.' };
+}
+
+function captureOutput(result: AdoptionStatusResult): string[] {
+  const lines: string[] = [];
+  printAdoptionStatus(result, (line) => lines.push(line));
+  return lines;
+}
+
+describe('printAdoptionStatus()', () => {
+  it('shows all four checkmark lines when fully adopted with no issues', () => {
+    const lines = captureOutput(makeResult());
+    expect(lines).toContain('✓ No Atlassian Connect modules found in connectModules');
+    expect(lines).toContain('✓ app.connect.key is present');
+    expect(lines).toContain('✓ No extra fields in app.connect beyond key');
+    expect(lines).toContain('✓ No Atlassian Connect scopes in permissions.scopes');
+  });
+
+  it('displays errors with the ✗ symbol', () => {
+    const lines = captureOutput(makeResult({
+      fullyAdopted: false,
+      errors: [makeError('E001', 'connectModules is non-empty')],
+    }));
+    expect(lines.some(l => l.includes('✗ [E001]'))).toBe(true);
+  });
+
+  it('displays warnings with the ⚠ symbol', () => {
+    const lines = captureOutput(makeResult({
+      fullyAdopted: false,
+      warnings: [makeWarning('W002', 'placeholder app ID')],
+    }));
+    expect(lines.some(l => l.includes('⚠ [W002]'))).toBe(true);
+  });
+
+  it('shows E001 detail lines for each module type', () => {
+    const lines = captureOutput(makeResult({
+      fullyAdopted: false,
+      errors: [makeError('E001', 'connectModules non-empty', {
+        detail: { moduleTypes: ['jira:webPanels'], formatted: ['jira:webPanels (2 modules)'] },
+      })],
+    }));
+    expect(lines.some(l => l.includes('jira:webPanels (2 modules)'))).toBe(true);
+  });
+
+  it('shows E004 scope detail lines', () => {
+    const lines = captureOutput(makeResult({
+      fullyAdopted: false,
+      errors: [makeError('E004', 'Connect scopes found', {
+        detail: { scopes: ['read:connect-jira', 'write:connect-jira'] },
+      })],
+    }));
+    expect(lines.some(l => l.includes('read:connect-jira'))).toBe(true);
+    expect(lines.some(l => l.includes('write:connect-jira'))).toBe(true);
+  });
+
+  it('always shows the adoption summary', () => {
+    const lines = captureOutput(makeResult({ summary: 'Your app is fully adopted on Forge.' }));
+    expect(lines.some(l => l.includes('Your app is fully adopted on Forge.'))).toBe(true);
+  });
+
+  it('shows error/warning count when issues are present', () => {
+    const lines = captureOutput(makeResult({
+      fullyAdopted: false,
+      errors: [makeError('E001', 'msg'), makeError('E003', 'msg2')],
+      warnings: [makeWarning('W001', 'msg3')],
+    }));
+    expect(lines.some(l => l.includes('2 error(s), 1 warning(s)'))).toBe(true);
+  });
+
+  it('shows the migration link when issues are present', () => {
+    const lines = captureOutput(makeResult({
+      fullyAdopted: false,
+      errors: [makeError('E001', 'msg')],
+    }));
+    expect(lines.some(l => l.includes('https://developer.atlassian.com/platform/adopting-forge-from-connect/how-to-adopt/'))).toBe(true);
+  });
+
+  it('does not show the migration link when fully adopted', () => {
+    const lines = captureOutput(makeResult());
+    expect(lines.some(l => l.includes('https://developer.atlassian.com'))).toBe(false);
+  });
+
+  it('uses console.log by default (smoke test)', () => {
+    const spy = jest.spyOn(console, 'log').mockImplementation(() => {});
+    printAdoptionStatus(makeResult());
+    expect(spy).toHaveBeenCalled();
+    spy.mockRestore();
   });
 });
