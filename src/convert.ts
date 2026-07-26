@@ -4,7 +4,7 @@ import yaml from 'js-yaml';
 import inquirer from 'inquirer';
 import { isPresent } from 'ts-is-present';
 import merge from 'deepmerge';
-import { ConnectDescriptor, ForgeManifest } from './types';
+import { ConnectDescriptor, ConnectPermission, ConnectWebhook, ConnectWebhookWithKey, NormalisedPermission, ForgeManifest } from './types';
 
 const UNSUPPORTED_MODULES = new Set<string>([]);
 
@@ -78,17 +78,17 @@ export function normaliseConnectScope(scope: string, type: 'jira' | 'confluence'
 }
 
 // Refactoring 3a: pure permission normalisation
-export function normalisePermission(permission: any): any {
+export function normalisePermission(permission: ConnectPermission): NormalisedPermission {
   return {
     ...permission,
     name: typeof permission.name === 'object' ? permission.name.value : permission.name,
-    description: typeof permission.description === 'object' ? permission.description.value : permission.description,
+    description: typeof permission.description === 'object' ? permission.description?.value : permission.description,
     migratedFromConnect: true,
   };
 }
 
 // Refactoring 3b: pure webhook key assignment
-export function assignWebhookKeys(webhooks: any[]): any[] {
+export function assignWebhookKeys(webhooks: ConnectWebhook[]): ConnectWebhookWithKey[] {
   return webhooks.map((webhook, index) => ({
     ...webhook,
     key: `webhook-${index + 1}`,

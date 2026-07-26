@@ -1,3 +1,33 @@
+// Connect permission as it appears in the descriptor — name/description may be
+// a plain string or a localisation object { value: string }
+export interface ConnectPermission {
+  key: string;
+  name: string | { value: string };
+  description?: string | { value: string };
+  [key: string]: any;
+}
+
+// Normalised permission after migration to Forge — name/description are plain strings
+export interface NormalisedPermission {
+  key: string;
+  name: string;
+  description?: string;
+  migratedFromConnect: true;
+  [key: string]: any;
+}
+
+// A Connect webhook entry from the descriptor — no key field, that is assigned by us
+export interface ConnectWebhook {
+  event: string;
+  url: string;
+  [key: string]: any;
+}
+
+// A webhook after assignWebhookKeys() has been applied
+export interface ConnectWebhookWithKey extends ConnectWebhook {
+  key: string;
+}
+
 // Typings for Atlassian Connect Descriptor
 export interface ConnectDescriptor {
   name: string;
@@ -5,7 +35,12 @@ export interface ConnectDescriptor {
   baseUrl: string;
   scopes: string[];
   lifecycle?: Record<string, string>;
-  modules: Record<string, any>;
+  modules: {
+    jiraGlobalPermissions?: ConnectPermission[];
+    jiraProjectPermissions?: ConnectPermission[];
+    webhooks?: ConnectWebhook[];
+    [key: string]: any;
+  };
   translations?: Record<string, any>;
   regionBaseUrls?: Record<string, any>;
   cloudAppMigration?: Record<string, string>;
