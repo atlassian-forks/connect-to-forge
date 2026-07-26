@@ -93,7 +93,7 @@ This approach requires `app.connect.key` to remain set in the manifest (so the a
 
 ### Human-readable (default)
 
-When Connect remnants are present:
+When no modules have been migrated yet (registered on Forge, still entirely Atlassian Connect under the covers):
 
 ```
 connect-to-forge adoption-status --manifest manifest.yml
@@ -115,10 +115,10 @@ Checking adoption status of manifest.yml...
 
 ⚠ [W002] App ID is the placeholder value — run `forge register` to get a real app ID.
 
-Adoption status: your app still has Connect modules and scopes in its manifest.
-It is running on Forge infrastructure but its behaviour is still being served
-by the Connect backend. Continue migrating modules to native Forge equivalents
-to complete the adoption.
+Adoption status: your app has been registered on Forge but no modules or scopes
+have been migrated yet. It is functionally still an Atlassian Connect app — all
+of its behaviour is served by the Connect backend. This is just the starting
+point; begin migrating your modules to native Forge equivalents to make progress.
 
 3 error(s), 1 warning(s)
 
@@ -169,7 +169,7 @@ Resolve the errors above to complete your adoption.
 ```json
 {
   "fullyAdopted": false,
-  "summary": "Your app still has Connect modules and scopes in its manifest. It is running on Forge infrastructure but its behaviour is still being served by the Connect backend.",
+  "summary": "Your app has been registered on Forge but no modules or scopes have been migrated yet. It is functionally still an Atlassian Connect app — all of its behaviour is served by the Connect backend.",
   "errors": [
     {
       "id": "E001",
@@ -289,11 +289,15 @@ function checkManifest(manifest: ForgeManifest): AdoptionStatusResult {
   // W003: Connect-style URL tokens
 
   const fullyAdopted = errors.length === 0;
+  const hasConnectModules = manifest.connectModules && Object.keys(manifest.connectModules).length > 0;
+  const hasNativeModules = manifest.modules && Object.keys(manifest.modules).length > 0;
+  const isUnstarted = hasConnectModules && !hasNativeModules;
+
   const summary = fullyAdopted
     ? 'Your app is fully adopted on Forge. There are no remaining Atlassian Connect modules or scopes in your manifest.'
-    : errors.some(e => e.id === 'E001')
-      ? 'Your app still has Connect modules in its manifest. It is running on Forge infrastructure but its behaviour is still being served by the Connect backend.'
-      : 'Your app has Connect artefacts remaining in its manifest. Resolve the errors above to complete your adoption.';
+    : isUnstarted
+      ? 'Your app has been registered on Forge but no modules or scopes have been migrated yet. It is functionally still an Atlassian Connect app — all of its behaviour is served by the Connect backend.'
+      : 'Your app is partially adopted on Forge. Some modules have been migrated to native Forge equivalents, but Atlassian Connect modules remain. Resolve the errors above to complete your adoption.';
 
   return { fullyAdopted, summary, errors, warnings };
 }
