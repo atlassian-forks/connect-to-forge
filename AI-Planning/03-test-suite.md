@@ -8,18 +8,19 @@ This proposal describes the testing strategy, required refactoring, and test cov
 
 ## Current Testability Assessment
 
-Only **two** of the eight exported functions are currently pure and testable in isolation:
+~~Only **two** of the eight exported functions are currently pure and testable in isolation~~ — after initial refactoring, four are now testable:
 
 | Function | File | Testable now? | Reason |
 |---|---|---|---|
 | `genDefaultManifest()` | `convert.ts` | ✅ Yes | Pure function |
 | `checkManifest()` | `adoption-status.ts` | ✅ Yes | Pure function |
+| `parseManifest()` | `adoption-status.ts` | ✅ Yes | Extracted from `runAdoptionStatus()` — YAML parsing separated from file I/O |
 | `downloadConnectDescriptor()` | `convert.ts` | ❌ No | Hardcoded axios + process.exit |
 | `loadExistingManifest()` | `convert.ts` | ❌ No | Hardcoded fs + console.log |
 | `convertToForgemanifest()` | `convert.ts` | ❌ No | Inquirer prompts tangled with logic |
 | `runConvert()` | `convert.ts` | ❌ No | Full I/O orchestrator |
 | `printAdoptionStatus()` | `adoption-status.ts` | ❌ No | Hardcoded console.log |
-| `runAdoptionStatus()` | `adoption-status.ts` | ❌ No | File I/O + process.exit |
+| `runAdoptionStatus()` | `adoption-status.ts` | ✅ Partially | File I/O still present but YAML parsing extracted |
 
 The core problem is that **business logic is tangled with I/O**. The fix is to extract pure functions for all business logic and inject I/O dependencies, making them testable without mocking the file system, network, or terminal.
 
@@ -28,6 +29,15 @@ The core problem is that **business logic is tangled with I/O**. The fix is to e
 ## Proposed Refactoring for Testability
 
 Before writing tests, the following targeted refactoring is needed. These changes are **additive** — they do not change the observable CLI behaviour, only the internal structure.
+
+| # | Refactoring | Status |
+|---|---|---|
+| 1 | Extract `buildForgeManifest()` from `convertToForgemanifest()` | ❌ Not done |
+| 2 | Extract `normaliseConnectScope()` | ❌ Not done |
+| 3 | Extract `normalisePermission()` and `assignWebhookKeys()` | ❌ Not done |
+| 4 | Make `loadExistingManifest()` return a result type | ❌ Not done |
+| 5 | Make `printAdoptionStatus()` accept a writer | ❌ Not done |
+| — | Extract `parseManifest()` from `runAdoptionStatus()` | ✅ Done |
 
 ### 1. Extract pure conversion logic from `convertToForgemanifest()`
 
@@ -108,18 +118,20 @@ export function printAdoptionStatus(
 
 ## Test Framework
 
-**Framework:** [Vitest](https://vitest.dev/) — fast, zero-config, native TypeScript support, compatible with CommonJS output. Lighter than Jest for this codebase size.
+> **Note:** The proposal originally suggested Vitest, but **Jest + ts-jest** was used instead as it integrates cleanly with the existing CommonJS TypeScript setup. The test API is compatible — `describe`, `it`, `expect` are identical.
 
-**Mocking:** Vitest's built-in `vi.mock()` and `vi.fn()` for any remaining I/O that cannot be extracted (axios, fs in integration tests).
+**Framework:** [Jest](https://jestjs.io/) + [ts-jest](https://kulshekhar.github.io/ts-jest/) — ✅ installed and configured
+
+**Mocking:** Jest's built-in `jest.mock()` and `jest.fn()` for any remaining I/O that cannot be extracted (axios, fs in integration tests).
 
 **Test file location:**
 ```
 connect-to-forge/src/
 ├── __tests__/
-│   ├── adoption-status.test.ts   # unit tests for checkManifest(), printAdoptionStatus()
-│   ├── convert.test.ts            # unit tests for buildForgeManifest(), normaliseConnectScope(), etc.
-│   ├── manifest-fixtures.ts       # shared ForgeManifest/ConnectDescriptor fixture objects
-│   └── integration.test.ts        # end-to-end CLI tests using child_process
+│   ├── adoption-status.test.ts   ✅ Done — unit tests for checkManifest(), parseManifest()
+│   ├── convert.test.ts            ❌ Not done — unit tests for buildForgeManifest(), normaliseConnectScope(), etc.
+│   ├── manifest-fixtures.ts       ❌ Not done — shared ForgeManifest/ConnectDescriptor fixture objects
+│   └── integration.test.ts        ❌ Not done — end-to-end CLI tests using child_process
 ```
 
 ---
@@ -308,38 +320,39 @@ export const minimalConnectDescriptor: ConnectDescriptor = {
 ## Setup Steps
 
 ```bash
-# 1. Add Vitest and test dependencies
-yarn add --dev vitest @vitest/coverage-v8
+# 1. Add Jest and test dependencies  ✅ Done
+npm install --save-dev jest ts-jest @types/jest
 
-# 2. Add test script to package.json
+# 2. Add test script to package.json  ✅ Done
 "scripts": {
-  "test": "vitest run",
-  "test:watch": "vitest",
-  "test:coverage": "vitest run --coverage"
+  "test": "jest"
+},
+"jest": {
+  "preset": "ts-jest",
+  "testEnvironment": "node",
+  "testMatch": ["**/src/__tests__/**/*.test.ts"]
 }
-
-# 3. Add vitest.config.ts
-# (configure include patterns, coverage thresholds)
 ```
 
 ---
 
 ## Scope & Effort Estimate
 
-| Task | Effort |
-|---|---|
-| Add Vitest + configure | Small (30 min) |
-| Create manifest-fixtures.ts | Small (1 hour) |
-| Extract `normaliseConnectScope()` | Small (30 min) |
-| Extract `normalisePermission()` | Small (30 min) |
-| Extract `assignWebhookKeys()` | Small (30 min) |
-| Extract `buildForgeManifest()` (biggest refactor) | Medium (3–4 hours) |
-| Refactor `loadExistingManifest()` | Small (1 hour) |
-| Make `printAdoptionStatus()` accept writer | Small (30 min) |
-| Write adoption-status.test.ts (~30 tests) | Medium (2–3 hours) |
-| Write convert.test.ts (~35 tests) | Medium (3–4 hours) |
-| Write integration.test.ts (~9 tests) | Small (1–2 hours) |
-| **Total** | **~14–18 hours** |
+| Task | Effort | Status |
+|---|---|---|
+| Add Jest + configure | Small (30 min) | ✅ Done |
+| Extract `parseManifest()` from `runAdoptionStatus()` | Small (30 min) | ✅ Done |
+| Write adoption-status.test.ts (25 tests) | Medium (2–3 hours) | ✅ Done |
+| Create manifest-fixtures.ts | Small (1 hour) | ❌ Not done |
+| Extract `normaliseConnectScope()` | Small (30 min) | ❌ Not done |
+| Extract `normalisePermission()` | Small (30 min) | ❌ Not done |
+| Extract `assignWebhookKeys()` | Small (30 min) | ❌ Not done |
+| Extract `buildForgeManifest()` (biggest refactor) | Medium (3–4 hours) | ❌ Not done |
+| Refactor `loadExistingManifest()` | Small (1 hour) | ❌ Not done |
+| Make `printAdoptionStatus()` accept writer | Small (30 min) | ❌ Not done |
+| Write convert.test.ts (~35 tests) | Medium (3–4 hours) | ❌ Not done |
+| Write integration.test.ts (~9 tests) | Small (1–2 hours) | ❌ Not done |
+| **Total** | **~14–18 hours** | **~3 hours complete** |
 
 ---
 
