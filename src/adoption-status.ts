@@ -137,44 +137,47 @@ export function checkManifest(manifest: ForgeManifest): AdoptionStatusResult {
   return { fullyAdopted, summary, errors, warnings };
 }
 
-function printIssues(issues: CheckIssue[], symbol: string): void {
+function printIssues(issues: CheckIssue[], symbol: string, write: (line: string) => void): void {
   for (const issue of issues) {
-    console.log(`${symbol} [${issue.id}] ${issue.message}`);
+    write(`${symbol} [${issue.id}] ${issue.message}`);
     if (issue.id === 'E001' && issue.detail?.formatted) {
       for (const line of issue.detail.formatted) {
-        console.log(`          - ${line}`);
+        write(`          - ${line}`);
       }
     }
     if (issue.id === 'E004' && issue.detail?.scopes) {
       for (const scope of issue.detail.scopes) {
-        console.log(`          - ${scope}`);
+        write(`          - ${scope}`);
       }
     }
-    console.log(`          → ${issue.remediation}`);
-    console.log('');
+    write(`          → ${issue.remediation}`);
+    write('');
   }
 }
 
-export function printAdoptionStatus(result: AdoptionStatusResult): void {
+// Refactoring 5: injectable writer for testability — defaults to console.log
+export function printAdoptionStatus(
+  result: AdoptionStatusResult,
+  write: (line: string) => void = console.log
+): void {
   if (result.errors.length === 0 && result.warnings.length === 0) {
-    // Print green checks for each passing rule
-    console.log('✓ No Atlassian Connect modules found in connectModules');
-    console.log('✓ app.connect.key is present');
-    console.log('✓ No extra fields in app.connect beyond key');
-    console.log('✓ No Atlassian Connect scopes in permissions.scopes');
-    console.log('');
+    write('✓ No Atlassian Connect modules found in connectModules');
+    write('✓ app.connect.key is present');
+    write('✓ No extra fields in app.connect beyond key');
+    write('✓ No Atlassian Connect scopes in permissions.scopes');
+    write('');
   } else {
-    printIssues(result.errors, '✗');
-    printIssues(result.warnings, '⚠');
+    printIssues(result.errors, '✗', write);
+    printIssues(result.warnings, '⚠', write);
   }
 
-  console.log(`Adoption status: ${result.summary}`);
-  console.log('');
+  write(`Adoption status: ${result.summary}`);
+  write('');
 
   if (result.errors.length > 0 || result.warnings.length > 0) {
-    console.log(`${result.errors.length} error(s), ${result.warnings.length} warning(s)`);
-    console.log('');
-    console.log('For help migrating: https://developer.atlassian.com/platform/adopting-forge-from-connect/how-to-adopt/');
+    write(`${result.errors.length} error(s), ${result.warnings.length} warning(s)`);
+    write('');
+    write('For help migrating: https://developer.atlassian.com/platform/adopting-forge-from-connect/how-to-adopt/');
   }
 }
 
