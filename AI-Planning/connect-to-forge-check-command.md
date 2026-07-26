@@ -26,7 +26,8 @@ The Forge migration levels (informally) are:
 
 A **Level 3 manifest** must have:
 - No `connectModules` key (or an empty object)
-- No `app.connect` section
+- `app.connect.key` present and retained (this is permanent — it ties the app to its Connect identity)
+- No other fields in `app.connect` beyond `key` (e.g. `remote`, `authentication` must be removed)
 - No entries in `remotes` (or no `remotes` key)
 - No scopes with the `:connect-jira` or `:connect-confluence` suffix
 - No `modules.migration:dataResidency` (used only during data-residency migration)
@@ -68,7 +69,9 @@ The `check` command inspects the parsed YAML manifest and applies the following 
 | Rule ID | What is checked | Remediation hint |
 |---|---|---|
 | `E001` | `connectModules` key exists and is non-empty | Migrate all modules under `connectModules` to native Forge `modules:` equivalents (see per-module guidance below) |
-| `E002` | `app.connect` section is present | Remove `app.connect` (and `app.connect.key`, `app.connect.remote`) after full migration |
+| `E002` | `app.connect.remote` is present | Remove `app.connect.remote` — it is only needed while a Connect remote backend is still in use |
+| `E006` | `app.connect` contains fields other than `key` (e.g. `remote`, `authentication`) | Remove all `app.connect` fields except `key`; they are Connect-on-Forge artefacts |
+| `E007` | `app.connect.key` is absent (no `app.connect` section, or `app.connect` exists without a `key`) | `app.connect.key` must be retained indefinitely — it ties the Forge app to its Connect identity and is required for APIs such as the clientKey migration endpoint |
 | `E003` | `remotes` array is non-empty | Remove the `remotes` section; native Forge functions handle backend calls directly |
 | `E004` | Any scope in `permissions.scopes` ends with `:connect-jira` or `:connect-confluence` | Replace with the equivalent native Forge scope (e.g. `read:jira-work` instead of `read:connect-jira`) |
 | `E005` | `modules["migration:dataResidency"]` is present | This module is only needed during data-residency migration; remove once complete |
@@ -85,7 +88,7 @@ If a `jira:lifecycle` or `confluence:lifecycle` module is present in `connectMod
    - Confluence: `GET /wiki/rest/atlassian-connect/1/addons/{app.connect.key}/properties/connect_client_key_019cdff3-8bfb-71fe-9628-875b700aebb8`
 3. **Remove the `<type>:lifecycle` entry** from `connectModules` once the trigger is in place.
 
-This approach requires `app.connect.key` to still be set in the manifest during the migration window (so the app properties API can be called), but the lifecycle module itself is no longer needed. Once all existing installations have been migrated and `clientKey`-keyed data has been re-keyed, `app.connect.key` can also be removed.
+This approach requires `app.connect.key` to remain set in the manifest (so the app properties API can be called), but the lifecycle module itself is no longer needed. **`app.connect.key` should be retained indefinitely** — it ties the Forge app to its Connect identity and must never be removed.
 
 > **Note:** The `clientKey` migration API is a **one-time migration activity** and will not be available after Connect reaches End of Support. See the [full guide](https://developer.atlassian.com/platform/adopting-forge-from-connect/migrate-connect-clientkey/) for details.
 
@@ -247,9 +250,22 @@ function checkManifest(manifest: ForgeManifest): CheckResult {
     warnings.push({ id: 'W001', severity: 'warning', message: '...', remediation: '...' });
   }
 
-  // E002: app.connect present
+  // E007: app.connect.key absent — must be retained indefinitely
+  if (!manifest.app?.connect?.key) {
+    errors.push({ id: 'E007', severity: 'error', message: 'app.connect.key is absent', remediation: 'Add app.connect.key with the original Connect app key — it must be retained indefinitely.' });
+  }
+
+  // E002: app.connect.remote present
+  if (manifest.app?.connect?.remote) {
+    errors.push({ id: 'E002', severity: 'error', message: 'app.connect.remote is present', detail: { remote: manifest.app.connect.remote }, remediation: 'Remove app.connect.remote once the Connect backend is no longer in use.' });
+  }
+
+  // E006: app.connect contains fields other than 'key'
   if (manifest.app?.connect) {
-    errors.push({ id: 'E002', severity: 'error', message: '...', detail: { connectKey: manifest.app.connect.key }, remediation: '...' });
+    const extraFields = Object.keys(manifest.app.connect).filter(k => k !== 'key');
+    if (extraFields.length > 0) {
+      errors.push({ id: 'E006', severity: 'error', message: 'app.connect contains Connect-on-Forge fields', detail: { extraFields }, remediation: 'Remove all app.connect fields except key.' });
+    }
   }
 
   // E003: remotes non-empty
