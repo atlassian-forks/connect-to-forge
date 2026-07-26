@@ -67,11 +67,27 @@ The `check` command inspects the parsed YAML manifest and applies the following 
 
 | Rule ID | What is checked | Remediation hint |
 |---|---|---|
-| `E001` | `connectModules` key exists and is non-empty | Migrate all modules under `connectModules` to native Forge `modules:` equivalents |
+| `E001` | `connectModules` key exists and is non-empty | Migrate all modules under `connectModules` to native Forge `modules:` equivalents (see per-module guidance below) |
 | `E002` | `app.connect` section is present | Remove `app.connect` (and `app.connect.key`, `app.connect.remote`) after full migration |
 | `E003` | `remotes` array is non-empty | Remove the `remotes` section; native Forge functions handle backend calls directly |
 | `E004` | Any scope in `permissions.scopes` ends with `:connect-jira` or `:connect-confluence` | Replace with the equivalent native Forge scope (e.g. `read:jira-work` instead of `read:connect-jira`) |
 | `E005` | `modules["migration:dataResidency"]` is present | This module is only needed during data-residency migration; remove once complete |
+
+#### E001 — Per-module remediation: `<type>:lifecycle`
+
+If a `jira:lifecycle` or `confluence:lifecycle` module is present in `connectModules`, the app is still relying on the Connect lifecycle webhook to receive the `clientKey` at install time. This is **Option 1** from the [Forge clientKey migration guide](https://developer.atlassian.com/platform/adopting-forge-from-connect/migrate-connect-clientkey/) and is not compatible with Forge Level 3.
+
+**Recommended: migrate to Option 2** — use a native Forge trigger instead:
+
+1. **Add a Forge trigger** on the `avi:forge:installed:app` event in `manifest.yml` (under `modules:`). This fires when the app is installed without needing any Connect lifecycle hooks.
+2. **In the trigger handler**, call the reserved app properties API endpoint to retrieve the `clientKey`:
+   - Jira: `GET /rest/atlassian-connect/1/addons/{app.connect.key}/properties/connect_client_key_019cdff3-8bfb-71fe-9628-875b700aebb8`
+   - Confluence: `GET /wiki/rest/atlassian-connect/1/addons/{app.connect.key}/properties/connect_client_key_019cdff3-8bfb-71fe-9628-875b700aebb8`
+3. **Remove the `<type>:lifecycle` entry** from `connectModules` once the trigger is in place.
+
+This approach requires `app.connect.key` to still be set in the manifest during the migration window (so the app properties API can be called), but the lifecycle module itself is no longer needed. Once all existing installations have been migrated and `clientKey`-keyed data has been re-keyed, `app.connect.key` can also be removed.
+
+> **Note:** The `clientKey` migration API is a **one-time migration activity** and will not be available after Connect reaches End of Support. See the [full guide](https://developer.atlassian.com/platform/adopting-forge-from-connect/migrate-connect-clientkey/) for details.
 
 ### Warnings (possible Connect remnants or migration artifacts)
 
@@ -379,3 +395,4 @@ This would cause the pipeline to fail if the manifest still contains any Connect
 - [Adopting Forge from Connect — how-to guide](https://developer.atlassian.com/platform/adopting-forge-from-connect/how-to-adopt/)
 - [Forge limitations vs Connect](https://developer.atlassian.com/platform/adopting-forge-from-connect/limitations-and-differences/)
 - [Forge unlicensed access](https://developer.atlassian.com/platform/forge/access-to-forge-apps-for-unlicensed-users/)
+- [Migrate Connect clientKey in Forge (Option 2)](https://developer.atlassian.com/platform/adopting-forge-from-connect/migrate-connect-clientkey/)
