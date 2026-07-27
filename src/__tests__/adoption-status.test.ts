@@ -299,8 +299,19 @@ function captureOutput(result: AdoptionStatusResult): string[] {
 }
 
 describe('printAdoptionStatus()', () => {
-  it('shows all four checkmark lines when fully adopted with no issues', () => {
+  it('shows all four checkmark lines when there are no errors', () => {
     const lines = captureOutput(makeResult());
+    expect(lines).toContain('✓ No Atlassian Connect modules found in connectModules');
+    expect(lines).toContain('✓ app.connect.key is present');
+    expect(lines).toContain('✓ No extra fields in app.connect beyond key');
+    expect(lines).toContain('✓ No Atlassian Connect scopes in permissions.scopes');
+  });
+
+  it('still shows checkmark lines when only warnings are present', () => {
+    const lines = captureOutput(makeResult({
+      fullyAdopted: false,
+      warnings: [makeWarning('W002', 'placeholder app ID')],
+    }));
     expect(lines).toContain('✓ No Atlassian Connect modules found in connectModules');
     expect(lines).toContain('✓ app.connect.key is present');
     expect(lines).toContain('✓ No extra fields in app.connect beyond key');

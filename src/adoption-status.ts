@@ -160,7 +160,7 @@ export function printAdoptionStatus(
   result: AdoptionStatusResult,
   write: (line: string) => void = console.log
 ): void {
-  if (result.errors.length === 0 && result.warnings.length === 0) {
+  if (result.errors.length === 0) {
     write('✓ No Atlassian Connect modules found in connectModules');
     write('✓ app.connect.key is present');
     write('✓ No extra fields in app.connect beyond key');
@@ -168,8 +168,8 @@ export function printAdoptionStatus(
     write('');
   } else {
     printIssues(result.errors, '✗', write);
-    printIssues(result.warnings, '⚠', write);
   }
+  printIssues(result.warnings, '⚠', write);
 
   write(`Adoption status: ${result.summary}`);
   write('');
