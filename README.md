@@ -15,8 +15,8 @@ npx connect-to-forge@latest convert --type <jira|confluence> --url https://websi
 If you want to check out this repository and run it locally:
 
 ```bash
-yarn install
-yarn start convert --type <jira|confluence> --url https://website.com/path/to/descriptor.json
+npm install
+npm start -- convert --type <jira|confluence> --url https://website.com/path/to/descriptor.json
 ```
 
 Where `--type` is the Atlassian product the app targets and `--url` is a publicly accessible URL to your Connect descriptor JSON.
@@ -34,7 +34,7 @@ npx connect-to-forge@latest adoption-status --manifest path/to/manifest.yml
 If you want to run it locally:
 
 ```bash
-yarn start adoption-status --manifest path/to/manifest.yml
+npm start -- adoption-status --manifest path/to/manifest.yml
 ```
 
 **Options:**
