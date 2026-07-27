@@ -29,7 +29,7 @@ export function checkManifest(manifest: ForgeManifest): AdoptionStatusResult {
       severity: 'error',
       message: `connectModules is present and non-empty (${moduleTypes.length} module type${moduleTypes.length !== 1 ? 's' : ''} found)`,
       detail: { moduleTypes, formatted: detail },
-      remediation: 'Migrate these to native Forge modules: or remove them if no longer needed. See: https://developer.atlassian.com/platform/adopting-forge-from-connect/how-to-adopt/',
+      remediation: 'Migrate these to native Forge modules, or remove them if no longer needed. See: https://developer.atlassian.com/platform/adopting-forge-from-connect/how-to-adopt/',
     });
   }
 

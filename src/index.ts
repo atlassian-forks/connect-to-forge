@@ -1,5 +1,5 @@
-import { program } from 'commander';
-import { runConvert } from './convert';
+import { program, Option } from 'commander';
+import { runConvert, VALID_APP_TYPES } from './convert';
 import { runAdoptionStatus } from './adoption-status';
 
 program
@@ -11,7 +11,11 @@ program
   .command('convert')
   .description('Convert an Atlassian Connect descriptor to a Forge manifest')
   .requiredOption('-u, --url <url>', 'Atlassian Connect descriptor URL')
-  .option('-t, --type <type>', 'App type (jira or confluence)')
+  .addOption(
+    new Option('-t, --type <type>', 'App type (jira or confluence)')
+      .choices([...VALID_APP_TYPES])
+      .makeOptionMandatory()
+  )
   .option('-o, --output <path>', 'Output file path', 'manifest.yml')
   .usage('--type <jira|confluence> --url https://website.com/path/to/descriptor.json')
   .action(async (opts) => {

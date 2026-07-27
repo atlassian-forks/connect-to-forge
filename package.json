@@ -1,7 +1,7 @@
 {
   "name": "connect-to-forge",
   "version": "1.0.24",
-  "description": "Converts an Atlassian Connect Descritor to a connect-on-forge manifest.",
+  "description": "Tools to help migrate Atlassian Connect apps to Forge: convert a Connect descriptor to a connect-on-forge manifest, and check your Forge adoption status.",
   "main": "dist/index",
   "bin": {
     "connect-to-forge": "./dist/connect-to-forge.js"
@@ -43,8 +43,8 @@
   },
   "scripts": {
     "start": "ts-node src/index.ts",
-    "start-jira": "ts-node --esm src/index.ts --type jira --url",
-    "start-conf": "ts-node --esm src/index.ts --type confluence --url",
+    "start-jira": "ts-node src/index.ts convert --type jira --url",
+    "start-conf": "ts-node src/index.ts convert --type confluence --url",
     "build": "tsc -p ./tsconfig.json",
     "prepack": "webpack --mode production --config webpack.config.js",
     "test": "jest"

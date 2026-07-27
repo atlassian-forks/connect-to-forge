@@ -34,16 +34,47 @@ export async function downloadConnectDescriptor(url: string): Promise<ConnectDes
   }
 }
 
+// The result of attempting to load an existing manifest. This is a discriminated
+// union so every outcome — including the failure modes — is returned as data
+// rather than thrown. That keeps loadExistingManifest a pure, easily-testable
+// function and lets the caller decide how to react to each case. See code
+// review item #2.
 export type LoadManifestResult =
-  | { found: true; manifest: ForgeManifest }
-  | { found: false };
+  | { status: 'found'; manifest: ForgeManifest }
+  // The file does not exist (ENOENT). Safe to create a new manifest.
+  | { status: 'missing' }
+  // The path exists but could not be read (permissions, it's a directory, ...).
+  | { status: 'unreadable'; error: Error }
+  // The file was read but is not valid YAML.
+  | { status: 'unparseable'; error: Error };
 
 export function loadExistingManifest(outputFilename: string): LoadManifestResult {
+  let raw: string;
   try {
-    const result = yaml.load(fs.readFileSync(outputFilename).toString('utf8'));
-    return { found: true, manifest: result as ForgeManifest };
+    raw = fs.readFileSync(outputFilename).toString('utf8');
   } catch (e) {
-    return { found: false };
+    // Only a genuinely missing file counts as "missing". Any other I/O error
+    // (permissions, path is a directory, etc.) is reported as 'unreadable' so
+    // the caller does not silently overwrite a real file.
+    if ((e as NodeJS.ErrnoException)?.code === 'ENOENT') {
+      return { status: 'missing' };
+    }
+    return {
+      status: 'unreadable',
+      error: new Error(`could not read existing manifest '${outputFilename}': ${e}`),
+    };
+  }
+
+  try {
+    const manifest = yaml.load(raw) as ForgeManifest;
+    return { status: 'found', manifest };
+  } catch (e) {
+    // The file exists but is not valid YAML. Reported (not thrown) so the caller
+    // can refuse to clobber a user-authored (if broken) file.
+    return {
+      status: 'unparseable',
+      error: new Error(`could not parse existing manifest '${outputFilename}' as YAML: ${e}`),
+    };
   }
 }
 
@@ -238,16 +269,21 @@ export function buildForgeManifest(
       if (!options.migrationPath) {
         warnings.push('Warning: You should specify a new migration path because JWT auth is not supported on migration endpoints.');
       }
-      m.modules = {
-        'migration:dataResidency': [
-          {
-            key: 'dare',
-            remote: 'connect',
-            path: migrationPath,
-            maxMigrationDurationHours: c.dataResidency?.maxMigrationDurationHours,
-          },
-        ],
+      // Merge into any modules already built (e.g. jira permission modules or
+      // confluence unlicensed-access modules) rather than reassigning, which
+      // would clobber them. See code review item #1.
+      if (!m.modules) m.modules = {};
+      const dataResidencyModule: Record<string, any> = {
+        key: 'dare',
+        remote: 'connect',
+        path: migrationPath,
       };
+      // Only include maxMigrationDurationHours when a real value is present —
+      // an explicit `undefined` is an invalid Forge value. See code review item #5.
+      if (isPresent(c.dataResidency?.maxMigrationDurationHours)) {
+        dataResidencyModule.maxMigrationDurationHours = c.dataResidency!.maxMigrationDurationHours;
+      }
+      m.modules['migration:dataResidency'] = [dataResidencyModule];
     } else {
       warnings.push('Region base URLs are present but no lifecycle hook for dare-migration event is defined.');
     }
@@ -348,22 +384,52 @@ export async function convertToForgemanifest(
 
 type ExpectedAction = 'Override' | 'Abort';
 
-export async function runConvert(opts: { url: string; type: string; output: string }): Promise<void> {
-  const connectDescriptor = await downloadConnectDescriptor(opts.url);
-  let [forgeManifest, warnings] = await convertToForgemanifest(genDefaultManifest(connectDescriptor), connectDescriptor, opts.type as 'jira' | 'confluence');
+export const VALID_APP_TYPES = ['jira', 'confluence'] as const;
+export type AppType = (typeof VALID_APP_TYPES)[number];
 
-  const loadResult = loadExistingManifest(opts.output);
-  if (loadResult.found) {
-    console.log(`Existing ${opts.output} file detected, will merge your Connect Modules in.`);
-    console.log('');
-  } else {
-    console.log(`No existing ${opts.output} file detected, will create one.`);
-    console.log('');
+// Validate and narrow the --type option. See code review item #4.
+export function parseAppType(type: string | undefined): AppType {
+  if (type === undefined) {
+    throw new Error("the --type option is required; expected one of: jira, confluence");
+  }
+  const normalised = type.toLowerCase();
+  if (!VALID_APP_TYPES.includes(normalised as AppType)) {
+    throw new Error(`invalid --type '${type}'; expected one of: ${VALID_APP_TYPES.join(', ')}`);
+  }
+  return normalised as AppType;
+}
+
+export async function runConvert(opts: { url: string; type?: string; output: string }): Promise<void> {
+  let type: AppType;
+  try {
+    type = parseAppType(opts.type);
+  } catch (e) {
+    console.error(`Error: ${e instanceof Error ? e.message : e}`);
+    process.exit(1);
   }
 
-  if (loadResult.found) {
+  const connectDescriptor = await downloadConnectDescriptor(opts.url);
+  let [forgeManifest, warnings] = await convertToForgemanifest(genDefaultManifest(connectDescriptor), connectDescriptor, type);
+
+  const loadResult = loadExistingManifest(opts.output);
+
+  // A present-but-unreadable/unparseable manifest must not be silently
+  // overwritten. Surface the error and abort. See code review item #2.
+  if (loadResult.status === 'unreadable' || loadResult.status === 'unparseable') {
+    console.error(`Error: ${loadResult.error.message}`);
+    console.error(`Refusing to overwrite '${opts.output}'. Fix or move the file and try again.`);
+    process.exit(1);
+  }
+
+  if (loadResult.status === 'found') {
     const existingManifest = loadResult.manifest;
     if (isPresent(existingManifest?.app?.connect)) {
+      // This file already has an app.connect section — we cannot safely merge
+      // into it, so the only options are to overwrite it or abort. Do NOT claim
+      // we will "merge" here (see code review item #10).
+      console.log(`Existing ${opts.output} file with an app.connect section detected.`);
+      console.log('');
+
       const answers = await inquirer.prompt<{ action: ExpectedAction }>([
         {
           type: 'list',
@@ -382,8 +448,15 @@ export async function runConvert(opts: { url: string; type: string; output: stri
 
       console.log('');
     } else {
+      // No app.connect section — safe to merge the generated manifest into the
+      // existing one.
+      console.log(`Existing ${opts.output} file detected, will merge your Connect Modules in.`);
+      console.log('');
       forgeManifest = merge(forgeManifest, existingManifest);
     }
+  } else {
+    console.log(`No existing ${opts.output} file detected, will create one.`);
+    console.log('');
   }
 
   if (warnings.length > 0) {

@@ -4,9 +4,42 @@ import {
   normalisePermission,
   assignWebhookKeys,
   buildForgeManifest,
+  parseAppType,
 } from '../convert';
 import { minimalConnectDescriptor, makeDefaultManifest } from './manifest-fixtures';
 import { ConnectDescriptor } from '../types';
+
+// ─── parseAppType() ───────────────────────────────────────────────────────
+// Bug #4: the --type option must be validated. Invalid or missing values used
+// to be cast blindly to 'jira' | 'confluence', producing broken scopes like
+// ':connect-undefined'. parseAppType now validates and normalises.
+
+describe('parseAppType()', () => {
+  it('accepts jira', () => {
+    expect(parseAppType('jira')).toBe('jira');
+  });
+
+  it('accepts confluence', () => {
+    expect(parseAppType('confluence')).toBe('confluence');
+  });
+
+  it('normalises case (e.g. Jira -> jira)', () => {
+    expect(parseAppType('Jira')).toBe('jira');
+    expect(parseAppType('CONFLUENCE')).toBe('confluence');
+  });
+
+  it('throws for an unknown type', () => {
+    expect(() => parseAppType('bitbucket')).toThrow(/invalid --type/i);
+  });
+
+  it('throws when type is undefined', () => {
+    expect(() => parseAppType(undefined)).toThrow(/required/i);
+  });
+
+  it('throws for an empty string', () => {
+    expect(() => parseAppType('')).toThrow(/invalid --type|required/i);
+  });
+});
 
 // ─── genDefaultManifest() ─────────────────────────────────────────────────
 
@@ -409,6 +442,108 @@ describe('buildForgeManifest()', () => {
         inScopeEUD: true,
       });
       expect(manifest.remotes![0].storage?.inScopeEUD).toBe(true);
+    });
+
+    // ── Regression tests for the "maxMigrationDurationHours: undefined" bug ─
+    // See AI-Planning/04-code-review-bugs-and-improvements.md item #5.
+    // When regionBaseUrls + a dare-migration lifecycle are present but the
+    // descriptor has NO `dataResidency` block, the module must NOT carry a
+    // `maxMigrationDurationHours` key set to `undefined` (an invalid Forge
+    // value). The key should be omitted entirely when there is no real value.
+    describe('regression: maxMigrationDurationHours must not be undefined', () => {
+      function buildWithoutDataResidency() {
+        const connect: ConnectDescriptor = {
+          ...minimalConnectDescriptor,
+          lifecycle: { 'dare-migration': '/migrate' },
+          regionBaseUrls: { EU: 'https://eu.example.com' },
+          // NOTE: no `dataResidency` block on purpose
+        };
+        const { manifest } = buildForgeManifest(makeDefaultManifest(), connect, 'jira', {
+          migrationPath: '/new-migrate',
+        });
+        return manifest.modules!['migration:dataResidency'][0];
+      }
+
+      it('omits the key entirely when dataResidency is absent', () => {
+        const entry = buildWithoutDataResidency();
+        // FAILS today: the key exists as an own property with value undefined.
+        expect(Object.prototype.hasOwnProperty.call(entry, 'maxMigrationDurationHours')).toBe(false);
+      });
+
+      it('never emits an explicit undefined value for maxMigrationDurationHours', () => {
+        const entry = buildWithoutDataResidency();
+        // FAILS today: entry.maxMigrationDurationHours === undefined but the key
+        // is present. A valid entry should either omit the key or hold a number.
+        const keys = Object.keys(entry);
+        expect(keys).not.toContain('maxMigrationDurationHours');
+      });
+
+      it('carries a numeric value when dataResidency IS provided', () => {
+        const connect: ConnectDescriptor = {
+          ...minimalConnectDescriptor,
+          lifecycle: { 'dare-migration': '/migrate' },
+          regionBaseUrls: { EU: 'https://eu.example.com' },
+          dataResidency: { maxMigrationDurationHours: 24 },
+        };
+        const { manifest } = buildForgeManifest(makeDefaultManifest(), connect, 'jira', {
+          migrationPath: '/new-migrate',
+        });
+        const entry = manifest.modules!['migration:dataResidency'][0];
+        // This case is already correct and should keep passing after the fix.
+        expect(entry.maxMigrationDurationHours).toBe(24);
+      });
+    });
+
+    // ── Regression tests for the "data residency clobbers modules" bug ──────
+    // See AI-Planning/04-code-review-bugs-and-improvements.md item #1.
+    // The data-residency block must MERGE into `m.modules` rather than
+    // reassigning it, so native modules built earlier in the function (jira
+    // permissions, confluence unlicensed-access modules) are retained alongside
+    // migration:dataResidency.
+    describe('regression: must not clobber previously-built native modules', () => {
+      it('retains jira permission modules when regionBaseUrls is present', () => {
+        const connect: ConnectDescriptor = {
+          ...minimalConnectDescriptor,
+          modules: {
+            jiraGlobalPermissions: [{ key: 'my-global-perm', name: 'My Global Perm' }],
+            jiraProjectPermissions: [{ key: 'my-project-perm', name: 'My Project Perm' }],
+          },
+          lifecycle: { 'dare-migration': '/migrate' },
+          regionBaseUrls: { EU: 'https://eu.example.com' },
+        };
+        const { manifest } = buildForgeManifest(makeDefaultManifest(), connect, 'jira', {
+          migrationPath: '/new-migrate',
+        });
+
+        // The migration module should exist...
+        expect(manifest.modules!['migration:dataResidency']).toBeDefined();
+        // ...but NOT at the expense of the permission modules built earlier.
+        expect(manifest.modules!['jira:globalPermission']).toBeDefined();
+        expect(manifest.modules!['jira:globalPermission'][0].key).toBe('my-global-perm');
+        expect(manifest.modules!['jira:projectPermission']).toBeDefined();
+        expect(manifest.modules!['jira:projectPermission'][0].key).toBe('my-project-perm');
+      });
+
+      it('retains confluence unlicensed-access modules when regionBaseUrls is present', () => {
+        const connect: ConnectDescriptor = {
+          ...minimalConnectDescriptor,
+          modules: {
+            staticContentMacro: [{ key: 'my-macro', name: { value: 'My Macro' }, url: '/macro' }],
+          },
+          lifecycle: { 'dare-migration': '/migrate' },
+          regionBaseUrls: { EU: 'https://eu.example.com' },
+        };
+        const { manifest } = buildForgeManifest(makeDefaultManifest(), connect, 'confluence', {
+          migrationPath: '/new-migrate',
+        });
+
+        // The migration module should exist...
+        expect(manifest.modules!['migration:dataResidency']).toBeDefined();
+        // ...but the native macro module must survive too.
+        expect(manifest.modules!['macro']).toBeDefined();
+        expect(manifest.modules!['macro'][0].key).toBe('my-macro');
+        expect(manifest.modules!['macro'][0].unlicensedAccess).toEqual(['unlicensed', 'anonymous']);
+      });
     });
   });
 
