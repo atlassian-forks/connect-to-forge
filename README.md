@@ -69,3 +69,19 @@ Checking adoption status of manifest.yml...
 
 Adoption status: Your app is fully adopted on Forge. There are no remaining Atlassian Connect modules or scopes in your manifest.
 ```
+
+---
+
+## Publishing
+
+To publish a new version to npm:
+
+1. Bump the version in `package.json` on a branch, open a PR, and merge to `main`
+2. Go to [Actions → CI → Run workflow](https://github.com/atlassian-forks/connect-to-forge/actions/workflows/ci.yml), select `main`, and click **Run workflow**
+
+   Or via the CLI:
+   ```bash
+   gh workflow run ci.yml --repo atlassian-forks/connect-to-forge --ref main
+   ```
+
+3. The `test` and `build and verify` jobs run in parallel — if both pass, the `publish` job runs automatically and pushes to npm.
