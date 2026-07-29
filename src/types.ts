@@ -51,6 +51,16 @@ export interface ConnectDescriptor {
   };
 }
 
+// Per-scope options used in the map form of permissions.scopes
+export interface ScopeOptions {
+  allowImpersonation?: boolean;
+}
+
+// The two valid formats for permissions.scopes in a Forge manifest:
+//   - string[]                      — standard scopes (most common)
+//   - Record<string, ScopeOptions>  — map form, used for offline user impersonation
+export type ForgeScopes = string[] | Record<string, ScopeOptions>;
+
 // Typings for Forge manifest
 export interface ForgeManifest {
   app: {
@@ -80,7 +90,13 @@ export interface ForgeManifest {
   modules?: Record<string, any>;
   connectModules?: Record<string, any>;
   permissions: {
-    scopes: string[];
+    scopes: ForgeScopes;
+    // Content Security Policy options for Custom UI (scripts, styles) —
+    // unrelated to OAuth scopes
+    content?: {
+      scripts?: string[];
+      styles?: string[];
+    };
   };
 }
 

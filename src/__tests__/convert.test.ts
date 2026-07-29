@@ -342,7 +342,7 @@ describe('buildForgeManifest()', () => {
   // ── Scopes ─────────────────────────────────────────────────────────────
 
   describe('scopes', () => {
-    it('normalises scopes for Jira', () => {
+    it('normalises scopes for Jira (array form)', () => {
       const connect: ConnectDescriptor = {
         ...minimalConnectDescriptor,
         scopes: ['READ', 'PROJECT_ADMIN'],
@@ -352,13 +352,83 @@ describe('buildForgeManifest()', () => {
       expect(manifest.permissions.scopes).toContain('project-admin:connect-jira');
     });
 
-    it('normalises scopes for Confluence', () => {
+    it('normalises scopes for Confluence (array form)', () => {
       const connect: ConnectDescriptor = {
         ...minimalConnectDescriptor,
         scopes: ['WRITE'],
       };
       const { manifest } = buildForgeManifest(makeDefaultManifest(), connect, 'confluence');
       expect(manifest.permissions.scopes).toContain('write:connect-confluence');
+    });
+
+    it('appends to existing array-form scopes without replacing them', () => {
+      const baseManifest = makeDefaultManifest();
+      baseManifest.permissions.scopes = ['read:jira-work'];
+      const connect: ConnectDescriptor = {
+        ...minimalConnectDescriptor,
+        scopes: ['WRITE'],
+      };
+      const { manifest } = buildForgeManifest(baseManifest, connect, 'jira');
+      const scopes = manifest.permissions.scopes as string[];
+      expect(scopes).toContain('read:jira-work');
+      expect(scopes).toContain('write:connect-jira');
+    });
+
+    it('merges Connect scopes into an existing map-form manifest as empty-options entries', () => {
+      const baseManifest = makeDefaultManifest();
+      baseManifest.permissions.scopes = {
+        'read:jira-work': { allowImpersonation: true },
+      };
+      const connect: ConnectDescriptor = {
+        ...minimalConnectDescriptor,
+        scopes: ['WRITE'],
+      };
+      const { manifest } = buildForgeManifest(baseManifest, connect, 'jira');
+      const scopes = manifest.permissions.scopes as Record<string, any>;
+      // Existing map-form scope preserved
+      expect(scopes['read:jira-work']).toEqual({ allowImpersonation: true });
+      // Converted Connect scope added with no impersonation
+      expect(scopes['write:connect-jira']).toEqual({});
+    });
+
+    it('preserves allowImpersonation on pre-existing map entries when merging', () => {
+      const baseManifest = makeDefaultManifest();
+      baseManifest.permissions.scopes = {
+        'read:confluence-content.summary': { allowImpersonation: true },
+        'write:confluence-content': { allowImpersonation: false },
+      };
+      const connect: ConnectDescriptor = {
+        ...minimalConnectDescriptor,
+        scopes: ['READ'],
+      };
+      const { manifest } = buildForgeManifest(baseManifest, connect, 'confluence');
+      const scopes = manifest.permissions.scopes as Record<string, any>;
+      expect(scopes['read:confluence-content.summary']).toEqual({ allowImpersonation: true });
+      expect(scopes['write:confluence-content']).toEqual({ allowImpersonation: false });
+      expect(scopes['read:connect-confluence']).toEqual({});
+    });
+
+    it('does not add Connect scopes when the descriptor has none', () => {
+      const connect: ConnectDescriptor = {
+        ...minimalConnectDescriptor,
+        scopes: [],
+      };
+      const { manifest } = buildForgeManifest(makeDefaultManifest(), connect, 'jira');
+      expect(manifest.permissions.scopes).toEqual([]);
+    });
+
+    it('produces a result that remains a map when starting from a map with no Connect scopes', () => {
+      const baseManifest = makeDefaultManifest();
+      baseManifest.permissions.scopes = {
+        'read:jira-work': {},
+      };
+      const connect: ConnectDescriptor = {
+        ...minimalConnectDescriptor,
+        scopes: [],
+      };
+      const { manifest } = buildForgeManifest(baseManifest, connect, 'jira');
+      // No Connect scopes to add — original map should be untouched
+      expect(manifest.permissions.scopes).toEqual({ 'read:jira-work': {} });
     });
   });
 
