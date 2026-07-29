@@ -1,6 +1,6 @@
 {
   "name": "connect-to-forge",
-  "version": "1.0.24",
+  "version": "1.1.0",
   "description": "Tools to help migrate Atlassian Connect apps to Forge: convert a Connect descriptor to a connect-on-forge manifest, and check your Forge adoption status.",
   "main": "dist/index",
   "bin": {
