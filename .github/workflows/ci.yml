@@ -5,8 +5,9 @@ on:
     branches: [ main ]
   pull_request:
     branches: [ main ]
-  release:
-    types: [ created ]
+  workflow_dispatch:
+    # Triggered manually via the GitHub Actions UI or `gh workflow run`.
+    # Version published is taken from package.json — bump it in a PR first.
 
 permissions:
   contents: read
@@ -57,7 +58,7 @@ jobs:
     name: Publish to npm
     runs-on: ubuntu-latest
     needs: [ test, build-and-verify ]
-    if: github.event_name == 'release' && github.event.action == 'created'
+    if: github.event_name == 'workflow_dispatch'
     permissions:
       contents: read
       id-token: write
