@@ -1,0 +1,19 @@
+image: node:18
+
+pipelines:
+  default:
+    - step:
+        name: Test
+        caches:
+          - node
+        script:
+          - yarn install --frozen-lockfile
+          - yarn test
+
+    - step:
+        name: Build
+        caches:
+          - node
+        script:
+          - yarn install --frozen-lockfile
+          - yarn prepack
