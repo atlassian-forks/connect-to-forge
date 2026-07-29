@@ -2,3 +2,4 @@ node_modules
 manifest.yml
 *.orig
 /dist
+package-lock.json
