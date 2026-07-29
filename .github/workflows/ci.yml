@@ -75,6 +75,18 @@ jobs:
       - name: Install dependencies
         run: yarn install --frozen-lockfile
 
+      - name: Set version from release tag
+        run: |
+          # Strip the leading 'v' from the tag name (e.g. v2.1.0 → 2.1.0)
+          VERSION=${GITHUB_REF_NAME#v}
+          # Validate that the result is a valid semver string
+          if ! npx --yes semver "$VERSION" > /dev/null 2>&1; then
+            echo "Error: release tag '$GITHUB_REF_NAME' is not a valid semver version"
+            exit 1
+          fi
+          echo "Publishing version: $VERSION"
+          npm version "$VERSION" --no-git-tag-version
+
       - name: Build webpack bundle
         run: yarn prepack
 
