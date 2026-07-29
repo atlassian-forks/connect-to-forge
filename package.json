@@ -1,7 +1,7 @@
 {
   "name": "connect-to-forge",
   "version": "1.0.24",
-  "description": "Converts an Atlassian Connect Descritor to a connect-on-forge manifest.",
+  "description": "Tools to help migrate Atlassian Connect apps to Forge: convert a Connect descriptor to a connect-on-forge manifest, and check your Forge adoption status.",
   "main": "dist/index",
   "bin": {
     "connect-to-forge": "./dist/connect-to-forge.js"
@@ -19,8 +19,11 @@
   "devDependencies": {
     "@types/deepmerge": "^2.2.0",
     "@types/inquirer": "^9.0.3",
+    "@types/jest": "^30.0.0",
     "@types/js-yaml": "^4.0.5",
     "@types/node": "^20.4.2",
+    "jest": "^30.4.2",
+    "ts-jest": "^29.4.12",
     "ts-loader": "^9.4.4",
     "ts-node": "^10.9.1",
     "typescript": "^5.1.6",
@@ -39,10 +42,16 @@
     "tmp": "^0.2.4"
   },
   "scripts": {
-    "start": "ts-node --esm src/index.ts",
-    "start-jira": "ts-node --esm src/index.ts --type jira --url",
-    "start-conf": "ts-node --esm src/index.ts --type confluence --url",
+    "start": "ts-node src/index.ts",
+    "start-jira": "ts-node src/index.ts convert --type jira --url",
+    "start-conf": "ts-node src/index.ts convert --type confluence --url",
     "build": "tsc -p ./tsconfig.json",
-    "prepack": "webpack --mode production --config webpack.config.js"
+    "prepack": "webpack --mode production --config webpack.config.js",
+    "test": "jest"
+  },
+  "jest": {
+    "preset": "ts-jest",
+    "testEnvironment": "node",
+    "testMatch": ["**/src/__tests__/**/*.test.ts"]
   }
 }
