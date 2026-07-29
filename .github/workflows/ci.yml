@@ -1,42 +1,88 @@
-name: Publish to npm
+name: CI
 
 on:
   push:
     branches: [ main ]
+  pull_request:
+    branches: [ main ]
   release:
     types: [ created ]
 
+permissions:
+  contents: read
+
 jobs:
-  publish:
+  test:
+    name: Test
     runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Use Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18.x'
+          cache: 'yarn'
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Run tests
+        run: yarn test
+
+  build-and-verify:
+    name: Build and Verify npx
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Use Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18.x'
+          cache: 'yarn'
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Build webpack bundle
+        run: yarn prepack
+
+      - name: Pack and verify npx
+        run: |
+          npm pack
+          npx --yes $(ls *.tgz) --help
+
+  publish:
+    name: Publish to npm
+    runs-on: ubuntu-latest
+    needs: [ test, build-and-verify ]
+    if: github.event_name == 'release' && github.event.action == 'created'
     permissions:
       contents: read
       id-token: write
-    
+
     steps:
-    - uses: actions/checkout@v3
-    
-    - name: Use Node.js
-      uses: actions/setup-node@v3
-      with:
-        node-version: '18.x'
-        registry-url: 'https://packages.atlassian.com/api/npm/npm-public/'
-        cache: 'yarn'
-    
-    - name: Install dependencies
-      run: yarn install --frozen-lockfile
-    
-    - name: Build
-      run: yarn build
-      
-    - name: Package with webpack
-      run: yarn prepack
-    
-    - name: Get Artifact Publish Token
-      id: publish-token
-      uses: atlassian-labs/artifact-publish-token@v1.0.1
-      with:
-        output-modes: npm
-    
-    - name: Publish to npm
-      run: npm publish --userconfig=./.npmrc-public --@atlassian/connect-to-forge:registry="https://packages.atlassian.com/api/npm/npm-public/"
+      - uses: actions/checkout@v3
+
+      - name: Use Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18.x'
+          registry-url: 'https://packages.atlassian.com/api/npm/npm-public/'
+          cache: 'yarn'
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Build webpack bundle
+        run: yarn prepack
+
+      - name: Get Artifact Publish Token
+        id: publish-token
+        uses: atlassian-labs/artifact-publish-token@v1.0.1
+        with:
+          output-modes: npm
+
+      - name: Publish to npm
+        run: npm publish --userconfig=./.npmrc-public --@atlassian/connect-to-forge:registry="https://packages.atlassian.com/api/npm/npm-public/"
