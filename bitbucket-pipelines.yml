@@ -2,20 +2,20 @@ image: node:18
 
 pipelines:
   default:
-    - step:
-        name: Test
-        caches:
-          - node
-        script:
-          - yarn install --frozen-lockfile
-          - yarn test
-
-    - step:
-        name: Build and Verify npx
-        caches:
-          - node
-        script:
-          - yarn install --frozen-lockfile
-          - yarn prepack
-          - npm pack
-          - npx --yes $(ls *.tgz) --help
+    - parallel:
+      - step:
+          name: Test
+          caches:
+            - node
+          script:
+            - yarn install --frozen-lockfile
+            - yarn test
+      - step:
+          name: Build and Verify npx
+          caches:
+            - node
+          script:
+            - yarn install --frozen-lockfile
+            - yarn prepack
+            - npm pack
+            - npx --yes $(ls *.tgz) --help
