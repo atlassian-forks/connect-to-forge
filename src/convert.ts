@@ -4,7 +4,7 @@ import yaml from 'js-yaml';
 import inquirer from 'inquirer';
 import { isPresent } from 'ts-is-present';
 import merge from 'deepmerge';
-import { ConnectDescriptor, ConnectPermission, ConnectWebhook, ConnectWebhookWithKey, NormalisedPermission, ForgeManifest } from './types';
+import { ConnectDescriptor, ConnectPermission, ConnectWebhook, ConnectWebhookWithKey, NormalisedPermission, ForgeManifest, ScopeOptions } from './types';
 
 const UNSUPPORTED_MODULES = new Set<string>([]);
 
@@ -257,9 +257,21 @@ export function buildForgeManifest(
     m.connectModules![`${type}:webhooks`] = assignWebhookKeys(webhooks);
   }
 
-  // Scopes
+  // Scopes — handle both array and map form of permissions.scopes
   if (isPresent(c.scopes) && c.scopes.length > 0) {
-    m.permissions.scopes = c.scopes.map(scope => normaliseConnectScope(scope, type));
+    const normalisedScopes = c.scopes.map(scope => normaliseConnectScope(scope, type));
+
+    if (Array.isArray(m.permissions.scopes)) {
+      // Array form — append directly
+      m.permissions.scopes = [...m.permissions.scopes, ...normalisedScopes];
+    } else {
+      // Map form — add each scope as a key with empty options (no impersonation)
+      const additionalScopes: Record<string, ScopeOptions> = {};
+      for (const scope of normalisedScopes) {
+        additionalScopes[scope] = {};
+      }
+      m.permissions.scopes = { ...m.permissions.scopes, ...additionalScopes };
+    }
   }
 
   // Data residency

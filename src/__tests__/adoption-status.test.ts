@@ -1,6 +1,5 @@
-import { checkManifest, parseManifest, printAdoptionStatus } from '../adoption-status';
-import { AdoptionStatusResult, CheckIssue } from '../types';
-import { ForgeManifest } from '../types';
+import { checkManifest, parseManifest, printAdoptionStatus, flattenScopes } from '../adoption-status';
+import { AdoptionStatusResult, CheckIssue, ForgeManifest, ForgeScopes } from '../types';
 
 // A minimal valid fully-adopted manifest — passes all checks
 const VALID_MANIFEST: ForgeManifest = {
@@ -166,6 +165,61 @@ describe('E004: Connect-style scopes', () => {
     const result = checkManifest(VALID_MANIFEST);
     expect(result.errors.find(e => e.id === 'E004')).toBeUndefined();
   });
+
+  it('raises E004 for :connect-jira scopes in map form', () => {
+    const manifest = makeManifest({
+      permissions: {
+        scopes: {
+          'read:connect-jira': { allowImpersonation: false },
+          'write:connect-jira': {},
+        },
+      },
+    });
+    const result = checkManifest(manifest);
+    const e004 = result.errors.find(e => e.id === 'E004');
+    expect(e004).toBeDefined();
+    expect(e004?.detail?.scopes).toContain('read:connect-jira');
+    expect(e004?.detail?.scopes).toContain('write:connect-jira');
+  });
+
+  it('raises E004 for :connect-confluence scopes in map form', () => {
+    const manifest = makeManifest({
+      permissions: {
+        scopes: { 'read:connect-confluence': { allowImpersonation: true } },
+      },
+    });
+    const result = checkManifest(manifest);
+    expect(result.errors.find(e => e.id === 'E004')).toBeDefined();
+  });
+
+  it('does not raise E004 for native scopes in map form', () => {
+    const manifest = makeManifest({
+      permissions: {
+        scopes: {
+          'read:jira-work': { allowImpersonation: true },
+          'write:jira-work': {},
+        },
+      },
+    });
+    const result = checkManifest(manifest);
+    expect(result.errors.find(e => e.id === 'E004')).toBeUndefined();
+  });
+
+  it('detects mixed Connect and native scopes in map form', () => {
+    const manifest = makeManifest({
+      permissions: {
+        scopes: {
+          'read:jira-work': {},
+          'read:connect-jira': { allowImpersonation: false },
+        },
+      },
+    });
+    const result = checkManifest(manifest);
+    const e004 = result.errors.find(e => e.id === 'E004');
+    expect(e004).toBeDefined();
+    expect(e004?.detail?.scopes).toHaveLength(1);
+    expect(e004?.detail?.scopes).toContain('read:connect-jira');
+  });
 });
 
 // ─── W002: placeholder app ID ─────────────────────────────────────────────
@@ -245,6 +299,53 @@ describe('adoption summary states', () => {
     const result = checkManifest(manifest);
     expect(result.fullyAdopted).toBe(false);
     expect(result.summary).toMatch(/partially adopted/i);
+  });
+});
+
+// ─── flattenScopes() ──────────────────────────────────────────────────────
+
+describe('flattenScopes()', () => {
+  it('returns an array unchanged when given a string[]', () => {
+    const scopes: ForgeScopes = ['read:jira-work', 'write:jira-work'];
+    expect(flattenScopes(scopes)).toEqual(['read:jira-work', 'write:jira-work']);
+  });
+
+  it('returns an empty array unchanged', () => {
+    expect(flattenScopes([])).toEqual([]);
+  });
+
+  it('returns scope names as keys from a map-form object', () => {
+    const scopes: ForgeScopes = {
+      'read:confluence-content.summary': { allowImpersonation: true },
+      'write:confluence-content': { allowImpersonation: false },
+      'write:jira-work': {},
+    };
+    expect(flattenScopes(scopes)).toEqual([
+      'read:confluence-content.summary',
+      'write:confluence-content',
+      'write:jira-work',
+    ]);
+  });
+
+  it('returns all scope names regardless of allowImpersonation value', () => {
+    const scopes: ForgeScopes = {
+      'read:jira-work': { allowImpersonation: true },
+      'write:jira-work': { allowImpersonation: false },
+    };
+    const result = flattenScopes(scopes);
+    expect(result).toContain('read:jira-work');
+    expect(result).toContain('write:jira-work');
+    expect(result).toHaveLength(2);
+  });
+
+  it('returns an empty array for an empty map object', () => {
+    const scopes: ForgeScopes = {};
+    expect(flattenScopes(scopes)).toEqual([]);
+  });
+
+  it('handles a single entry in the map form', () => {
+    const scopes: ForgeScopes = { 'read:jira-work': {} };
+    expect(flattenScopes(scopes)).toEqual(['read:jira-work']);
   });
 });
 

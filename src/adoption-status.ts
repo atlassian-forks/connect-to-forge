@@ -1,6 +1,19 @@
 import fs from 'fs';
 import yaml from 'js-yaml';
-import { ForgeManifest, AdoptionStatusResult, CheckIssue } from './types';
+import { ForgeManifest, ForgeScopes, AdoptionStatusResult, CheckIssue } from './types';
+
+/**
+ * Flatten either form of permissions.scopes into a plain string[].
+ *
+ * - Array form:  ["read:jira-work", "write:jira-work"]  → same array
+ * - Map form:    { "read:jira-work": { allowImpersonation: true }, ... } → Object.keys(...)
+ */
+export function flattenScopes(scopes: ForgeScopes): string[] {
+  if (Array.isArray(scopes)) {
+    return scopes;
+  }
+  return Object.keys(scopes);
+}
 
 const PLACEHOLDER_APP_ID = 'ari:cloud:ecosystem::app/invalid-run-forge-register';
 
@@ -67,8 +80,9 @@ export function checkManifest(manifest: ForgeManifest): AdoptionStatusResult {
     }
   }
 
-  // E004: Connect-style scopes
-  const connectScopes = (manifest.permissions?.scopes ?? []).filter(
+  // E004: Connect-style scopes — works for both array and map form
+  const allScopes = flattenScopes(manifest.permissions?.scopes ?? []);
+  const connectScopes = allScopes.filter(
     s => s.endsWith(':connect-jira') || s.endsWith(':connect-confluence')
   );
   if (connectScopes.length > 0) {
