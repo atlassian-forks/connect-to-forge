@@ -9,7 +9,7 @@ A set of tools to help Connect developers migrate their apps to Forge.
 Converts an Atlassian Connect descriptor to a Connect-on-Forge `manifest.yml`, giving you a starting point for your migration.
 
 ```bash
-npx connect-to-forge@latest convert --type <jira|confluence> --url https://website.com/path/to/descriptor.json
+npx @atlassian/connect-to-forge@latest convert --type <jira|confluence> --url https://website.com/path/to/descriptor.json
 ```
 
 If you want to check out this repository and run it locally:
@@ -28,7 +28,7 @@ Where `--type` is the Atlassian product the app targets and `--url` is a publicl
 Checks a Forge `manifest.yml` for remaining Atlassian Connect artefacts and reports your adoption status. Useful at any stage of migration to understand what still needs to be done — or to confirm you are fully adopted.
 
 ```bash
-npx connect-to-forge@latest adoption-status --manifest path/to/manifest.yml
+npx @atlassian/connect-to-forge@latest adoption-status --manifest path/to/manifest.yml
 ```
 
 If you want to run it locally:
